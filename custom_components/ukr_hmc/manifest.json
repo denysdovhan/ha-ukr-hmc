@@ -1,0 +1,12 @@
+{
+  "domain": "ukr_hmc",
+  "name": "Ukrhydrometcenter",
+  "codeowners": ["@denysdovhan"],
+  "config_flow": true,
+  "documentation": "https://github.com/denysdovhan/ha-ukr-hmc",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/denysdovhan/ha-ukr-hmc/issues",
+  "requirements": [],
+  "version": "0.0.0-unreleased"
+}

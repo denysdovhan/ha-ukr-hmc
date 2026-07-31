@@ -1,0 +1,56 @@
+[project]
+name = "ha-ukr-hmc"
+version = "0.0.0"
+description = "Home Assistant custom component: Ukrainian Hydrometeorological Center"
+readme = "readme.md"
+requires-python = ">=3.14.2"
+authors = [{ name = "Denys Dovhan", email = "denysdovhan@gmail.com" }]
+dependencies = ["homeassistant==2026.7.4"]
+
+[dependency-groups]
+dev = [
+  "colorlog==6.10.1",
+  "pre-commit>=4.6.0",
+  "pytest>=8.3.0",
+  "pytest-cov>=7.0.0",
+  "pytest-homeassistant-custom-component>=0.13.297",
+  "ruff==0.15.20",
+]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
+  "D203", # no-blank-line-before-class (incompatible with formatter)
+  "D212", # multi-line-summary-first-line (incompatible with formatter)
+  "COM812", # incompatible with formatter
+  "ISC001", # incompatible with formatter
+  "FIX002", # Line contains TODO, consider resolving an issue
+  "TD003", # Missing issue link on the line following this TODO
+  "RUF001", # Cyrillic text intentionally used
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "ANN", # Missing type annotations
+  "D", # Docstring requirements
+  "PLR2004", # Magic value used in comparison
+  "S101", # Use of assert detected
+  "SLF001", # Private member access needed for testing
+]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+
+[tool.ruff.lint.pyupgrade]
+keep-runtime-typing = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

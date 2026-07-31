@@ -1,0 +1,7 @@
+{
+  "name": "Ukrainian Hydrometeorological Center",
+  "homeassistant": "2026.7.4",
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "ukr-hmc.zip"
+}

@@ -1,0 +1,93 @@
+{
+  "title": "Ukrhydrometcenter",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Ukrhydrometcenter",
+        "description": "Connect Home Assistant to public Ukrhydrometcenter weather data."
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Ukrhydrometcenter.",
+      "no_stations": "Ukrhydrometcenter returned no stations."
+    },
+    "abort": {
+      "already_configured": "Ukrhydrometcenter is already configured."
+    }
+  },
+  "config_subentries": {
+    "station": {
+      "step": {
+        "user": {
+          "title": "Add meteorological station",
+          "description": "How do you want to select a physical meteorological station?",
+          "menu_options": {
+            "map": "Use the nearest station",
+            "station": "Select a station from the list"
+          }
+        },
+        "map": {
+          "title": "Use the nearest station",
+          "description": "Select a location. The nearest physical Ukrhydrometcenter station is resolved whenever data updates.",
+          "data": {
+            "name": "Name",
+            "location": "Location"
+          },
+          "data_description": {
+            "name": "Name for this weather location.",
+            "location": "Location used to find the nearest station."
+          }
+        },
+        "station": {
+          "title": "Select meteorological station",
+          "description": "Select a physical station from the Ukrhydrometcenter catalog.",
+          "data": {
+            "name": "Name",
+            "station_id": "Meteorological station"
+          },
+          "data_description": {
+            "name": "Name for this weather location.",
+            "station_id": "Station names and regions are provided by Ukrhydrometcenter."
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "Failed to connect to Ukrhydrometcenter.",
+        "invalid_station": "The selected station is no longer available.",
+        "no_stations": "Ukrhydrometcenter returned no stations."
+      },
+      "abort": {
+        "already_configured": "This station selection is already configured."
+      },
+      "initiate_flow": {
+        "user": "Add meteorological station"
+      },
+      "entry_type": "Meteorological station"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "condition": {
+        "name": "Condition"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "pressure": {
+        "name": "Pressure"
+      },
+      "wind_speed": {
+        "name": "Wind speed"
+      },
+      "wind_direction": {
+        "name": "Wind direction"
+      },
+      "observation_time": {
+        "name": "Observation time"
+      }
+    }
+  }
+}

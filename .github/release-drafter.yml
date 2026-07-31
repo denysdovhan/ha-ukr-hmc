@@ -1,0 +1,58 @@
+name-template: v$RESOLVED_VERSION ️️💥
+tag-template: v$RESOLVED_VERSION
+exclude-contributors:
+  - github-actions[bot]
+  - github-actions
+  - dependabot[bot]
+  - dependabot
+categories:
+  - title: ❗️ Breaking Changes
+    labels:
+      - breaking
+  - title: 🚀 Features
+    labels:
+      - feature
+      - enhancement
+  - title: 🐛 Bug Fixes
+    labels:
+      - fix
+      - bug
+  - title: 🧰 Maintenance
+    labels:
+      - chore
+      - dependencies
+change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
+change-title-escapes: '\<*_&'
+version-resolver:
+  major:
+    labels:
+      - major
+      - breaking
+  minor:
+    labels:
+      - minor
+      - feature
+      - enhancement
+  patch:
+    labels:
+      - patch
+      - dependencies
+  default: patch
+template: |
+  ## What's Changed
+
+  $CHANGES
+
+  ## ⭐️ Contributors
+
+  $CONTRIBUTORS
+
+  ## Sponsorship
+
+  If you like this project, please consider supporting me:
+
+  - 💖 [Sponsor on GitHub](https://github.com/sponsors/denysdovhan)
+  - ☕️ [Buy Me A Coffee](https://buymeacoffee.com/denysdovhan)
+  - 🤝 [Support on Patreon](https://patreon.com/denysdovhan)
+  - Bitcoin: `bc1q7lfx6de8jrqt8mcds974l6nrsguhd6u30c6sg8`
+  - Ethereum: `0x6aF39C917359897ae6969Ad682C14110afe1a0a1`
