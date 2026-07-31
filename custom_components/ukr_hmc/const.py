@@ -1,12 +1,12 @@
-"""Constants for the Ukrhydrometcenter integration."""
+"""Constants for the UkrHMC integration."""
 
 from datetime import timedelta
 from typing import Final
 
 DOMAIN: Final = "ukr_hmc"
-NAME: Final = "Ukrhydrometcenter"
-MANUFACTURER: Final = "Ukrhydrometcenter"
-ATTRIBUTION: Final = "Data provided by Ukrhydrometcenter"
+NAME: Final = "UkrHMC"
+MANUFACTURER: Final = "Ukrainian Hydrometeorological Center"
+ATTRIBUTION: Final = "Data provided by the Ukrainian Hydrometeorological Center"
 CONFIGURATION_URL: Final = "https://www.meteo.gov.ua/"
 
 CONF_STATION_ID: Final = "station_id"

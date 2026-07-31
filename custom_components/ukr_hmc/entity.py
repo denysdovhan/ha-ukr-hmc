@@ -1,4 +1,4 @@
-"""Base entity for Ukrhydrometcenter station data."""
+"""Base entity for UkrHMC station data."""
 
 from __future__ import annotations
 
@@ -24,11 +24,6 @@ class UkrHMCStationEntityMixin:
     coordinator: UkrHMCCoordinator
     _subentry: ConfigSubentry
     _station_id: int | None
-
-    def _initialize_station(self, subentry: ConfigSubentry) -> None:
-        """Initialize station selection."""
-        self._subentry = subentry
-        self._station_id = resolve_station_id(self.coordinator.data, subentry)
 
     @property
     def station(self) -> UkrHMCStation | None:
@@ -73,7 +68,7 @@ class UkrHMCEntity(
     UkrHMCStationEntityMixin,
     CoordinatorEntity[UkrHMCCoordinator],
 ):
-    """Base class for coordinator-backed Ukrhydrometcenter entities."""
+    """Base class for coordinator-backed UkrHMC entities."""
 
     _attr_attribution = ATTRIBUTION
     _attr_has_entity_name = True
@@ -85,4 +80,5 @@ class UkrHMCEntity(
     ) -> None:
         """Initialize the entity."""
         super().__init__(coordinator, context=subentry.subentry_id)
-        self._initialize_station(subentry)
+        self._subentry = subentry
+        self._station_id = resolve_station_id(self.coordinator.data, subentry)

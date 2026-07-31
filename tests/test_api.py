@@ -1,4 +1,4 @@
-"""Tests for the isolated Ukrhydrometcenter API package."""
+"""Tests for the isolated UkrHMC API package."""
 
 from types import MappingProxyType
 
@@ -138,3 +138,7 @@ def test_data_snapshot_copies_input_mappings() -> None:
 
     assert isinstance(snapshot.stations, MappingProxyType)
     assert snapshot.stations
+
+
+def test_api_user_agent_is_integration_agnostic() -> None:
+    assert REQUEST_HEADERS["User-Agent"] == "UkrHMC/0.0.0"

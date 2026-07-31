@@ -1,4 +1,4 @@
-"""Current-condition sensors for Ukrhydrometcenter."""
+"""Current-condition sensors for UkrHMC."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for Ukrhydrometcenter weather and sensor entities."""
+"""Tests for UkrHMC weather and sensor entities."""
 
 from __future__ import annotations
 

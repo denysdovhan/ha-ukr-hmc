@@ -1,4 +1,4 @@
-"""Shared Ukrhydrometcenter test data."""
+"""Shared UkrHMC test data."""
 
 from datetime import date, datetime, time
 from zoneinfo import ZoneInfo

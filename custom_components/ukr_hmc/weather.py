@@ -1,4 +1,4 @@
-"""Weather entity for Ukrhydrometcenter."""
+"""Weather entity for UkrHMC."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from .condition import hmc_condition_to_ha
 from .const import ATTRIBUTION
 from .coordinator import UkrHMCCoordinator
 from .entity import UkrHMCStationEntityMixin
+from .helpers import resolve_station_id
 
 if TYPE_CHECKING:
     from datetime import date
@@ -95,7 +96,8 @@ class UkrHMCWeather(
     ) -> None:
         """Initialize a station weather entity."""
         super().__init__(coordinator, context=subentry.subentry_id)
-        self._initialize_station(subentry)
+        self._subentry = subentry
+        self._station_id = resolve_station_id(coordinator.data, subentry)
         self._attr_unique_id = subentry.subentry_id
 
     @property

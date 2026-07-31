@@ -1,4 +1,4 @@
-"""Async client for public Ukrhydrometcenter data."""
+"""Async client for public UkrHMC data."""
 
 from .client import UkrHMCClient
 from .errors import UkrHMCConnectionError, UkrHMCDataError, UkrHMCError

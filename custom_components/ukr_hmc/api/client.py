@@ -1,4 +1,4 @@
-"""Async HTTP client for public Ukrhydrometcenter data."""
+"""Async HTTP client for public UkrHMC data."""
 
 import asyncio
 import json
@@ -30,7 +30,7 @@ from .parsers import (
 
 
 class UkrHMCClient:
-    """Client for public Ukrhydrometcenter endpoints."""
+    """Client for public UkrHMC endpoints."""
 
     def __init__(self, session: ClientSession) -> None:
         """Initialize the client with an injected HTTP session."""

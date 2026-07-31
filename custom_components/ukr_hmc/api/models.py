@@ -1,4 +1,4 @@
-"""Provider data models for Ukrhydrometcenter."""
+"""Provider data models for UkrHMC."""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ class UkrHMCForecastDay:
 
 @dataclass(frozen=True, slots=True)
 class UkrHMCData:
-    """Complete provider snapshot used by Home Assistant."""
+    """Complete provider snapshot."""
 
     stations: Mapping[int, UkrHMCStation]
     observations: Mapping[int, UkrHMCObservation]

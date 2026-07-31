@@ -1,4 +1,4 @@
-"""Config flow for Ukrhydrometcenter."""
+"""Config flow for UkrHMC."""
 
 from typing import Any, override
 
@@ -56,7 +56,7 @@ def _station_options(stations: list[UkrHMCStation]) -> list[SelectOptionDict]:
 
 
 class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Configure the Ukrhydrometcenter service."""
+    """Configure the UkrHMC service."""
 
     VERSION = 1
 

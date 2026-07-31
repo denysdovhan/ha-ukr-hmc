@@ -1,18 +1,18 @@
 {
-  "title": "Ukrhydrometcenter",
+  "title": "Ukrainian Hydrometeorological Center",
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Ukrhydrometcenter",
-        "description": "Connect Home Assistant to public Ukrhydrometcenter weather data."
+        "title": "Connect to UkrHMC",
+        "description": "Connect Home Assistant to public weather data from the Ukrainian Hydrometeorological Center."
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to Ukrhydrometcenter.",
-      "no_stations": "Ukrhydrometcenter returned no stations."
+      "cannot_connect": "Failed to connect to the Ukrainian Hydrometeorological Center.",
+      "no_stations": "The Ukrainian Hydrometeorological Center returned no stations."
     },
     "abort": {
-      "already_configured": "Ukrhydrometcenter is already configured."
+      "already_configured": "The Ukrainian Hydrometeorological Center is already configured."
     }
   },
   "config_subentries": {
@@ -28,7 +28,7 @@
         },
         "map": {
           "title": "Use the nearest station",
-          "description": "Select a location. The nearest physical Ukrhydrometcenter station is resolved whenever data updates.",
+          "description": "Select a location. The nearest physical UkrHMC station is resolved whenever data updates.",
           "data": {
             "name": "Name",
             "location": "Location"
@@ -40,21 +40,21 @@
         },
         "station": {
           "title": "Select meteorological station",
-          "description": "Select a physical station from the Ukrhydrometcenter catalog.",
+          "description": "Select a physical station from the UkrHMC catalog.",
           "data": {
             "name": "Name",
             "station_id": "Meteorological station"
           },
           "data_description": {
             "name": "Name for this weather location.",
-            "station_id": "Station names and regions are provided by Ukrhydrometcenter."
+            "station_id": "Station names and regions are provided by UkrHMC."
           }
         }
       },
       "error": {
-        "cannot_connect": "Failed to connect to Ukrhydrometcenter.",
+        "cannot_connect": "Failed to connect to UkrHMC.",
         "invalid_station": "The selected station is no longer available.",
-        "no_stations": "Ukrhydrometcenter returned no stations."
+        "no_stations": "UkrHMC returned no stations."
       },
       "abort": {
         "already_configured": "This station selection is already configured."

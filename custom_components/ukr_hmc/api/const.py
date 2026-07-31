@@ -1,7 +1,8 @@
-"""Constants for the Ukrhydrometcenter API client."""
+"""Constants for the UkrHMC API client."""
 
 from typing import Final
 
+# API endpoints.
 BASE_URL: Final = "https://www.meteo.gov.ua"
 CURRENT_PATH: Final = "/_/m/current.js"
 DAY_NIGHT_PATH: Final = "/_/_e5m.json"
@@ -14,7 +15,5 @@ REQUEST_TIMEOUT: Final = 20
 REQUEST_HEADERS: Final = {
     "Accept": "application/json, text/javascript, */*",
     "Referer": f"{BASE_URL}/",
-    "User-Agent": (
-        "HomeAssistant-UkrHMC/0.0.0 (+https://github.com/denysdovhan/ha-ukr-hmc)"
-    ),
+    "User-Agent": "UkrHMC/0.0.0",
 }

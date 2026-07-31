@@ -1,1 +1,1 @@
-"""Tests for Ukrhydrometcenter."""
+"""Tests for UkrHMC."""

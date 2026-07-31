@@ -1,4 +1,4 @@
-"""Set up the Ukrhydrometcenter integration."""
+"""Set up the UkrHMC integration."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ async def async_setup_entry(
     hass: HomeAssistant,
     entry: UkrHMCConfigEntry,
 ) -> bool:
-    """Set up Ukrhydrometcenter from a config entry."""
+    """Set up UkrHMC from a config entry."""
     api = UkrHMCClient(async_get_clientsession(hass))
     coordinator = UkrHMCCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
@@ -37,7 +37,7 @@ async def async_unload_entry(
     hass: HomeAssistant,
     entry: UkrHMCConfigEntry,
 ) -> bool:
-    """Unload an Ukrhydrometcenter config entry."""
+    """Unload a UkrHMC config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

@@ -1,4 +1,4 @@
-"""Data update coordinator for Ukrhydrometcenter."""
+"""Data update coordinator for UkrHMC."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for Ukrhydrometcenter setup and unload."""
+"""Tests for UkrHMC setup and unload."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ async def test_setup_creates_weather_and_current_sensors(
 ) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title="Ukrhydrometcenter",
+        title="UkrHMC",
         unique_id=DOMAIN,
         data={},
         subentries_data=[STATIC_SUBENTRY_DATA],

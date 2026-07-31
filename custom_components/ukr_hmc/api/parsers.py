@@ -1,4 +1,4 @@
-"""Parsers for Ukrhydrometcenter JSON and JavaScript data payloads."""
+"""Parsers for UkrHMC JSON and JavaScript data payloads."""
 
 import json
 import re

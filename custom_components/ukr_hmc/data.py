@@ -1,4 +1,4 @@
-"""Runtime data types for Ukrhydrometcenter."""
+"""Runtime data types for UkrHMC."""
 
 from __future__ import annotations
 

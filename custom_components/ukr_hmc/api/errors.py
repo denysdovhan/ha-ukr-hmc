@@ -1,13 +1,13 @@
-"""Exceptions raised by the Ukrhydrometcenter API client."""
+"""Exceptions raised by the UkrHMC API client."""
 
 
 class UkrHMCError(Exception):
-    """Base Ukrhydrometcenter error."""
+    """Base UkrHMC error."""
 
 
 class UkrHMCConnectionError(UkrHMCError):
-    """Raised when Ukrhydrometcenter cannot be reached."""
+    """Raised when UkrHMC cannot be reached."""
 
 
 class UkrHMCDataError(UkrHMCError):
-    """Raised when Ukrhydrometcenter returns invalid data."""
+    """Raised when UkrHMC returns invalid data."""

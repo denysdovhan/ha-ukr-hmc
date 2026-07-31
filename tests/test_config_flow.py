@@ -1,4 +1,4 @@
-"""Tests for Ukrhydrometcenter config and station subentry flows."""
+"""Tests for UkrHMC config and station subentry flows."""
 
 from __future__ import annotations
 
