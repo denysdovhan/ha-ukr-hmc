@@ -1,5 +1,5 @@
 ---
-title: Initial Ukrhydrometcenter integration
+title: Initial UkrHMC integration
 date: 2026-07-30
 status: wip
 related_paths:
@@ -9,18 +9,18 @@ related_paths:
   - readme.md
 ---
 
-# Initial Ukrhydrometcenter integration
+# Initial UkrHMC integration
 
 ## Background
 
-The initial integration is based on reverse-engineered meteo.gov.ua station,
-observation, forecast, icon, and wind data documented in `meteo.md`.
+The initial UkrHMC integration is based on reverse-engineered meteo.gov.ua
+station, observation, forecast, icon, and wind data documented in `meteo.md`.
 
 ## Problem
 
-Expose Ukrhydrometcenter observations and forecasts through native Home
-Assistant weather and sensor entities while keeping the provider API code ready
-for extraction into a standalone package.
+Expose Ukrainian Hydrometeorological Center observations and forecasts through
+native Home Assistant weather and sensor entities while keeping the provider
+API code ready for extraction into a standalone package.
 
 ## Questions & Answers
 
@@ -28,7 +28,7 @@ for extraction into a standalone package.
   meteorological stations with IDs, coordinates, altitude, and observations.
   Support both nearest-station and explicit-list selection like LUN Misto Air.
 - Which forecasts should be exposed? Use the forecast periods and values
-  provided by Ukrhydrometcenter. Do not calculate or infer weather values.
+  provided by UkrHMC. Do not calculate or infer weather values.
 - Which current-condition sensors should be created? Follow the OpenWeatherMap
   pattern and expose the researched current values.
 - Which language behavior should be used? Use Ukrainian provider labels,
@@ -81,6 +81,8 @@ for extraction into a standalone package.
 - [x] Daily and provider day/night forecasts use only direct HMC values.
 - [x] Lint, tests, lockfile checks, and live Home Assistant validation pass.
 - [x] Local light/dark brand icons and logos use official UkrHMC artwork.
+- [x] Review feedback uses descriptive provider-field constants, native wind
+      direction metadata, official naming, and custom-integration translations.
 
 ## Implementation Notes
 
@@ -98,3 +100,30 @@ for extraction into a standalone package.
 - 2026-07-31: Added local Home Assistant brand assets derived from the official
   meteo.gov.ua symbol and vector wordmark, with transparent light/dark and
   normal/hDPI variants.
+- 2026-07-31: Applied initial review feedback. Removed Home Assistant coupling
+  from the extractable API user agent, replaced provider schema literals with
+  documented constants, simplified condition and parser expressions, and
+  removed the duplicate `strings.json` because custom integrations load
+  `translations/*.json` directly.
+- 2026-07-31: Matched OpenWeatherMap's native wind-direction sensor contract by
+  exposing provider compass directions as degrees with the wind-direction
+  device class. Confirmed the existing service `DeviceInfo.configuration_url`
+  already supplies the same Visit action as Met.no.
+- 2026-07-31: Kept the station picker as a strict dropdown. Home Assistant
+  2026.7 only uses its searchable generic picker for multiple selections or
+  custom values; Aerial Danger is searchable because its preset selectors are
+  multi-select, while UkrHMC must accept exactly one provider station.
+- 2026-07-31: Review validation passed Ruff, the full pre-commit suite, and all
+  41 tests.
+- 2026-07-31: Follow-up review uses the full official organization name for
+  the localized integration title in both English and Ukrainian.
+- 2026-07-31: Extended the full English organization name to the top-level
+  connection errors and duplicate-configuration message.
+- 2026-07-31: Kept the original direct UkrHMC text for the `condition` sensor;
+  canonical Home Assistant conditions remain on the weather entity. Grouped
+  API constants with descriptive headers and used the full official name in
+  the manifest.
+- 2026-07-31: Replaced the assembled brand logos with the official
+  `ugmc-map-wm-ua.svg` composition, cropped above its `meteo.gov.ua` line.
+  Preserved transparent light/dark and normal/hDPI variants; icons are
+  unchanged.
