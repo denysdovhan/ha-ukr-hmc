@@ -1,6 +1,6 @@
 {
   "domain": "ukr_hmc",
-  "name": "Ukrhydrometcenter",
+  "name": "Ukrainian Hydrometeorological Center",
   "codeowners": ["@denysdovhan"],
   "config_flow": true,
   "documentation": "https://github.com/denysdovhan/ha-ukr-hmc",
