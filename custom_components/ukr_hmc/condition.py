@@ -17,46 +17,51 @@ from homeassistant.components.weather import (
     ATTR_CONDITION_WINDY,
 )
 
+RAIN_KEYWORDS = ("дощ", "злив", "мряк")
+SNOW_KEYWORDS = ("сніг", "хуртов", "поземок", "крупа")
+
+
+def _has_any(description: str, keywords: tuple[str, ...]) -> bool:
+    """Return whether a description contains any keyword."""
+    return any(keyword in description for keyword in keywords)
+
 
 def hmc_condition_to_ha(description: str, *, is_night: bool = False) -> str:
     """Map a published HMC description to a canonical HA condition."""
     condition = description.casefold()
+    has_rain = _has_any(condition, RAIN_KEYWORDS)
+    has_snow = _has_any(condition, SNOW_KEYWORDS)
+    clear_condition = ATTR_CONDITION_CLEAR_NIGHT if is_night else ATTR_CONDITION_SUNNY
+    condition_rules = (
+        ("гроза" in condition and has_rain, ATTR_CONDITION_LIGHTNING_RAINY),
+        ("гроза" in condition, ATTR_CONDITION_LIGHTNING),
+        ("град" in condition, ATTR_CONDITION_HAIL),
+        (has_rain and has_snow, ATTR_CONDITION_SNOWY_RAINY),
+        (has_snow, ATTR_CONDITION_SNOWY),
+        (
+            "злив" in condition or ("сильн" in condition and has_rain),
+            ATTR_CONDITION_POURING,
+        ),
+        (has_rain or "ожелед" in condition, ATTR_CONDITION_RAINY),
+        (_has_any(condition, ("туман", "імла", "димка")), ATTR_CONDITION_FOG),
+        (_has_any(condition, ("буря", "шквал", "смерч")), ATTR_CONDITION_WINDY),
+        (
+            _has_any(
+                condition,
+                (
+                    "малохмар",
+                    "невелика хмарність",
+                    "мінлива хмарність",
+                    "з проясненнями",
+                ),
+            ),
+            ATTR_CONDITION_PARTLYCLOUDY,
+        ),
+        ("хмар" in condition, ATTR_CONDITION_CLOUDY),
+        ("ясно" in condition, clear_condition),
+    )
 
-    has_rain = any(word in condition for word in ("дощ", "злив", "мряк"))
-    has_snow = any(word in condition for word in ("сніг", "хуртов", "поземок", "крупа"))
-
-    if "гроза" in condition:
-        result = (
-            ATTR_CONDITION_LIGHTNING_RAINY if has_rain else ATTR_CONDITION_LIGHTNING
-        )
-    elif "град" in condition:
-        result = ATTR_CONDITION_HAIL
-    elif has_rain and has_snow:
-        result = ATTR_CONDITION_SNOWY_RAINY
-    elif has_snow:
-        result = ATTR_CONDITION_SNOWY
-    elif "злив" in condition or ("сильн" in condition and has_rain):
-        result = ATTR_CONDITION_POURING
-    elif has_rain or "ожелед" in condition:
-        result = ATTR_CONDITION_RAINY
-    elif any(word in condition for word in ("туман", "імла", "димка")):
-        result = ATTR_CONDITION_FOG
-    elif any(word in condition for word in ("буря", "шквал", "смерч")):
-        result = ATTR_CONDITION_WINDY
-    elif any(
-        word in condition
-        for word in (
-            "малохмар",
-            "невелика хмарність",
-            "мінлива хмарність",
-            "з проясненнями",
-        )
-    ):
-        result = ATTR_CONDITION_PARTLYCLOUDY
-    elif "хмар" in condition:
-        result = ATTR_CONDITION_CLOUDY
-    elif "ясно" in condition:
-        result = ATTR_CONDITION_CLEAR_NIGHT if is_night else ATTR_CONDITION_SUNNY
-    else:
-        result = ATTR_CONDITION_EXCEPTIONAL
-    return result
+    for matches, ha_condition in condition_rules:
+        if matches:
+            return ha_condition
+    return ATTR_CONDITION_EXCEPTIONAL

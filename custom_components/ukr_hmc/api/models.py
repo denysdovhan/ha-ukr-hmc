@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from .const import WIND_BEARINGS
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import date, datetime, time
@@ -18,6 +20,13 @@ class UkrHMCWind:
     code: int
     abbreviation: str | None
     name: str | None
+
+    @property
+    def bearing(self) -> float | None:
+        """Return the provider compass abbreviation as a standard bearing."""
+        if self.abbreviation is None:
+            return None
+        return WIND_BEARINGS.get(self.abbreviation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,16 +100,22 @@ class UkrHMCForecastDay:
     @property
     def condition_day(self) -> str:
         """Return the provider's combined daytime description."""
-        return ", ".join(
-            value for value in (self.cloudiness, self.precipitation_day) if value
-        )
+        conditions = []
+        if self.cloudiness:
+            conditions.append(self.cloudiness)
+        if self.precipitation_day:
+            conditions.append(self.precipitation_day)
+        return ", ".join(conditions)
 
     @property
     def condition_night(self) -> str:
         """Return the provider's combined nighttime description."""
-        return ", ".join(
-            value for value in (self.cloudiness, self.precipitation_night) if value
-        )
+        conditions = []
+        if self.cloudiness:
+            conditions.append(self.cloudiness)
+        if self.precipitation_night:
+            conditions.append(self.precipitation_night)
+        return ", ".join(conditions)
 
 
 @dataclass(frozen=True, slots=True)

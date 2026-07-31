@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    DEGREE,
     PERCENTAGE,
     UnitOfPressure,
     UnitOfSpeed,
@@ -85,9 +86,10 @@ SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     UkrHMCSensorDescription(
         key="wind_direction",
         translation_key="wind_direction",
-        value_fn=lambda observation: (
-            observation.wind.name or observation.wind.abbreviation
-        ),
+        device_class=SensorDeviceClass.WIND_DIRECTION,
+        native_unit_of_measurement=DEGREE,
+        state_class=SensorStateClass.MEASUREMENT_ANGLE,
+        value_fn=lambda observation: observation.wind.bearing,
     ),
     UkrHMCSensorDescription(
         key="observation_time",

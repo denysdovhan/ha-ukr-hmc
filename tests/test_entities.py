@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+from homeassistant.const import DEGREE
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ukr_hmc.const import DOMAIN
+from custom_components.ukr_hmc.const import CONFIGURATION_URL, DOMAIN
 from custom_components.ukr_hmc.coordinator import UkrHMCCoordinator
 from custom_components.ukr_hmc.sensor import SENSORS, UkrHMCSensor
 from custom_components.ukr_hmc.weather import UkrHMCWeather
@@ -40,6 +42,7 @@ async def test_weather_current_and_native_forecasts(hass: HomeAssistant) -> None
     assert weather.native_pressure == 750
     assert weather.native_wind_speed == 3
     assert weather.wind_bearing == "NW"
+    assert weather.device_info["configuration_url"] == CONFIGURATION_URL
 
     daily = weather._async_forecast_daily()
     assert daily == [
@@ -83,5 +86,12 @@ async def test_current_sensors_use_provider_values(hass: HomeAssistant) -> None:
     assert values["humidity"] == 38
     assert values["pressure"] == 750
     assert values["wind_speed"] == 3
-    assert values["wind_direction"] == "Північно-Західний"
+    assert values["wind_direction"] == 315
     assert values["observation_time"].isoformat() == "2026-07-30T15:00:00+03:00"
+
+    wind_direction = next(
+        description for description in SENSORS if description.key == "wind_direction"
+    )
+    assert wind_direction.device_class is SensorDeviceClass.WIND_DIRECTION
+    assert wind_direction.native_unit_of_measurement == DEGREE
+    assert wind_direction.state_class is SensorStateClass.MEASUREMENT_ANGLE

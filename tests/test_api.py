@@ -5,6 +5,7 @@ from types import MappingProxyType
 import pytest
 
 from custom_components.ukr_hmc.api import UkrHMCDataError
+from custom_components.ukr_hmc.api.const import REQUEST_HEADERS
 from custom_components.ukr_hmc.api.parsers import (
     parse_forecasts,
     parse_lookups,
@@ -63,6 +64,7 @@ def test_parse_observations_and_lookups() -> None:
     observation = observations[33345]
     assert observation.condition == "Малохмарно"
     assert observation.wind.abbreviation == "NNE"
+    assert observation.wind.bearing == 22.5
     assert observation.observed_at.isoformat() == "2026-07-30T15:00:00+03:00"
     assert observation.sunrise.isoformat() == "05:22:00"
 
