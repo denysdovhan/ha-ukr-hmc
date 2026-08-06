@@ -68,6 +68,9 @@ station ID.
   location weather entities hourly and daily features.
 - ✅ Use the exact current-hour location record for current weather and sensor
   values; never expose a future record as current.
+- ✅ Give station and location sources explicit sensor sets matching their
+  current-data schemas. Stations expose pressure; locations expose both the raw
+  compass direction and its mapped numeric bearing without current pressure.
 - ✅ Follow OpenWeather's sensor split: canonical Home Assistant keys in
   `condition`, and direct provider text in `weather`.
 - ✅ Match the website's location daily view: 03:00 supplies the low, while
@@ -78,6 +81,8 @@ station ID.
 - ❌ Do not register placeholder radiation or hydrology handlers before those
   products are implemented.
 - ❌ Do not calculate daily averages or infer missing location forecast values.
+- ❌ Do not borrow pressure or numeric wind direction from the next future hour
+  when the current location record does not publish those fields.
 - ❌ Do not add migration code for development-only subentries.
 
 ## Tradeoffs & Alternatives
@@ -153,3 +158,15 @@ station ID.
   unit with hPa for location forecasts; setup creates all sensors uniformly.
   Both weather subentry forms suggest Home Assistant's configured home name.
   Ruff and all 59 tests pass.
+- 2026-08-06: Live Kyiv, Zarichanka, and Chernivtsi responses confirmed that
+  `dataDetailed` starts at the next hour, while the exact current `fulldata`
+  record publishes `WindCompass8` but not pressure or numeric `windDirection`.
+  Sensor setup now uses explicit station and location sets. Locations omit the
+  unavailable current pressure sensor and expose both raw compass direction and
+  a degree value mapped through the provider bearing table. Ruff and all 59
+  tests pass.
+- 2026-08-06: Generic sensor icons now use Home Assistant's `icons.json`
+  frontend metadata. Canonical condition states have dynamic weather icons,
+  provider text has a weather default, and raw compass direction uses
+  `mdi:compass`; device-class sensors retain Home Assistant's native icons.
+  Targeted pre-commit validation, Ruff, and all 59 tests pass.
