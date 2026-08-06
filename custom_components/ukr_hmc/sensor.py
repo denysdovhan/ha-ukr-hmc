@@ -19,6 +19,8 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 
+from .condition import hmc_condition_to_ha
+from .const import WEATHER_SUBENTRY_TYPES
 from .entity import UkrHMCEntity
 
 if TYPE_CHECKING:
@@ -30,23 +32,37 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
     from homeassistant.helpers.typing import StateType
 
-    from .api import UkrHMCObservation
+    from .api import UkrHMCHourlyForecast, UkrHMCObservation
     from .coordinator import UkrHMCCoordinator
     from .data import UkrHMCConfigEntry
 
 
 @dataclass(frozen=True, kw_only=True)
 class UkrHMCSensorDescription(SensorEntityDescription):
-    """Describe a current observation sensor."""
+    """Describe a current weather sensor."""
 
-    value_fn: Callable[[UkrHMCObservation], StateType | datetime]
+    station_value_fn: Callable[[UkrHMCObservation, bool], StateType | datetime]
+    location_value_fn: Callable[[UkrHMCHourlyForecast], StateType | datetime]
 
 
 SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     UkrHMCSensorDescription(
         key="condition",
         translation_key="condition",
-        value_fn=lambda observation: observation.condition,
+        station_value_fn=lambda observation, is_night: hmc_condition_to_ha(
+            observation.condition,
+            is_night=is_night,
+        ),
+        location_value_fn=lambda forecast: hmc_condition_to_ha(
+            forecast.condition,
+            is_night=forecast.is_night,
+        ),
+    ),
+    UkrHMCSensorDescription(
+        key="weather",
+        translation_key="weather",
+        station_value_fn=lambda observation, _: observation.condition,
+        location_value_fn=lambda forecast: forecast.weather,
     ),
     UkrHMCSensorDescription(
         key="temperature",
@@ -55,7 +71,8 @@ SENSORS: tuple[UkrHMCSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
-        value_fn=lambda observation: observation.temperature,
+        station_value_fn=lambda observation, _: observation.temperature,
+        location_value_fn=lambda forecast: forecast.temperature,
     ),
     UkrHMCSensorDescription(
         key="humidity",
@@ -64,7 +81,8 @@ SENSORS: tuple[UkrHMCSensorDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
-        value_fn=lambda observation: observation.humidity,
+        station_value_fn=lambda observation, _: observation.humidity,
+        location_value_fn=lambda forecast: forecast.humidity,
     ),
     UkrHMCSensorDescription(
         key="pressure",
@@ -73,7 +91,8 @@ SENSORS: tuple[UkrHMCSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfPressure.MMHG,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
-        value_fn=lambda observation: observation.pressure,
+        station_value_fn=lambda observation, _: observation.pressure,
+        location_value_fn=lambda forecast: forecast.pressure,
     ),
     UkrHMCSensorDescription(
         key="wind_speed",
@@ -81,7 +100,8 @@ SENSORS: tuple[UkrHMCSensorDescription, ...] = (
         device_class=SensorDeviceClass.WIND_SPEED,
         native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda observation: observation.wind_speed,
+        station_value_fn=lambda observation, _: observation.wind_speed,
+        location_value_fn=lambda forecast: forecast.wind_speed,
     ),
     UkrHMCSensorDescription(
         key="wind_direction",
@@ -89,13 +109,15 @@ SENSORS: tuple[UkrHMCSensorDescription, ...] = (
         device_class=SensorDeviceClass.WIND_DIRECTION,
         native_unit_of_measurement=DEGREE,
         state_class=SensorStateClass.MEASUREMENT_ANGLE,
-        value_fn=lambda observation: observation.wind.bearing,
+        station_value_fn=lambda observation, _: observation.wind.bearing,
+        location_value_fn=lambda forecast: forecast.wind_direction,
     ),
     UkrHMCSensorDescription(
         key="observation_time",
         translation_key="observation_time",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda observation: observation.observed_at,
+        station_value_fn=lambda observation, _: observation.observed_at,
+        location_value_fn=lambda forecast: forecast.forecast_at,
     ),
 )
 
@@ -105,9 +127,11 @@ async def async_setup_entry(
     config_entry: UkrHMCConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up sensors for each station subentry."""
+    """Set up current weather sensors for each configured location."""
     coordinator = config_entry.runtime_data.coordinator
     for subentry in config_entry.subentries.values():
+        if subentry.subentry_type not in WEATHER_SUBENTRY_TYPES:
+            continue
         async_add_entities(
             [
                 UkrHMCSensor(coordinator, subentry, description)
@@ -118,7 +142,7 @@ async def async_setup_entry(
 
 
 class UkrHMCSensor(UkrHMCEntity, SensorEntity):
-    """Represent one current observation value."""
+    """Represent one current weather value."""
 
     entity_description: UkrHMCSensorDescription
 
@@ -131,12 +155,20 @@ class UkrHMCSensor(UkrHMCEntity, SensorEntity):
         """Initialize a sensor."""
         super().__init__(coordinator, subentry)
         self.entity_description = description
+        # Location forecasts report pressure in hPa; station observations use mmHg.
+        if self._station_id is None and description.key == "pressure":
+            self._attr_native_unit_of_measurement = UnitOfPressure.HPA
         self._attr_unique_id = f"{subentry.subentry_id}-{description.key}"
 
     @property
     @override
     def native_value(self) -> StateType | datetime | None:
         """Return the current provider value."""
+        if self.current_forecast is not None:
+            return self.entity_description.location_value_fn(self.current_forecast)
         if self.observation is None:
             return None
-        return self.entity_description.value_fn(self.observation)
+        return self.entity_description.station_value_fn(
+            self.observation,
+            self._station_id in self.coordinator.data.night_station_ids,
+        )

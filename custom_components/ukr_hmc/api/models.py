@@ -52,6 +52,56 @@ class UkrHMCStation:
 
 
 @dataclass(frozen=True, slots=True)
+class UkrHMCLocationForecastRequest:
+    """Location accepted by the provider's forecast endpoint."""
+
+    name: str
+    latitude: float
+    longitude: float
+
+
+@dataclass(frozen=True, slots=True)
+class UkrHMCHourlyForecast:
+    """Hourly forecast fields published for a location."""
+
+    forecast_at: datetime
+    temperature: float
+    precipitation: float | None
+    condition: str
+    weather: str
+    is_night: bool
+    wind_compass: str | None
+    wind_speed: float | None
+    wind_gust: float | None
+    humidity: float | None
+    pressure: float | None
+    wind_direction: float | None
+    dew_point: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class UkrHMCLocationForecastDay:
+    """Day and night values used by the provider's location daily cards."""
+
+    date: date
+    temperature_night: float
+    temperature_day: float
+    condition_night: str
+    condition_day: str
+    weather_night: str
+    weather_day: str
+
+
+@dataclass(frozen=True, slots=True)
+class UkrHMCLocationForecast:
+    """Current, hourly, and daily forecasts for one location."""
+
+    current: UkrHMCHourlyForecast | None
+    hourly_forecasts: tuple[UkrHMCHourlyForecast, ...]
+    daily_forecasts: tuple[UkrHMCLocationForecastDay, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class UkrHMCObservation:
     """Latest observation for a station."""
 
@@ -125,6 +175,7 @@ class UkrHMCData:
     stations: Mapping[int, UkrHMCStation]
     observations: Mapping[int, UkrHMCObservation]
     forecasts: Mapping[int, tuple[UkrHMCForecastDay, ...]]
+    location_forecasts: Mapping[str, UkrHMCLocationForecast]
     night_station_ids: frozenset[int]
 
     @classmethod
@@ -134,6 +185,7 @@ class UkrHMCData:
         stations: dict[int, UkrHMCStation],
         observations: dict[int, UkrHMCObservation],
         forecasts: dict[int, tuple[UkrHMCForecastDay, ...]],
+        location_forecasts: dict[str, UkrHMCLocationForecast],
         night_station_ids: frozenset[int],
     ) -> UkrHMCData:
         """Create an immutable provider snapshot."""
@@ -141,5 +193,6 @@ class UkrHMCData:
             stations=MappingProxyType(dict(stations)),
             observations=MappingProxyType(dict(observations)),
             forecasts=MappingProxyType(dict(forecasts)),
+            location_forecasts=MappingProxyType(dict(location_forecasts)),
             night_station_ids=night_station_ids,
         )

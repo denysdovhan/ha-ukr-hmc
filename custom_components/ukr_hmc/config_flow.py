@@ -25,17 +25,21 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
-from .api import UkrHMCClient, UkrHMCError, UkrHMCStation
+from .api import (
+    UkrHMCClient,
+    UkrHMCDataError,
+    UkrHMCError,
+    UkrHMCLocationForecastRequest,
+    UkrHMCStation,
+)
 from .const import (
     CONF_STATION_ID,
-    CONF_STATION_TYPE,
     DOMAIN,
     NAME,
-    STATION_TYPE_DYNAMIC,
-    STATION_TYPE_STATIC,
-    SUBENTRY_TYPE_STATION,
+    SUBENTRY_TYPE_WEATHER_LOCATION,
+    SUBENTRY_TYPE_WEATHER_STATION,
+    WEATHER_SUBENTRY_TYPES,
 )
-from .helpers import nearest_station
 
 
 def _station_options(stations: list[UkrHMCStation]) -> list[SelectOptionDict]:
@@ -55,10 +59,18 @@ def _station_options(stations: list[UkrHMCStation]) -> list[SelectOptionDict]:
     ]
 
 
+def _is_duplicate(config_entry: ConfigEntry, unique_id: str) -> bool:
+    """Return whether this weather resource already exists."""
+    return any(
+        subentry.unique_id == unique_id for subentry in config_entry.subentries.values()
+    )
+
+
 class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
     """Configure the UkrHMC service."""
 
     VERSION = 1
+    _initial_subentry_type: str
 
     @classmethod
     @callback
@@ -68,16 +80,19 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Return supported config subentry flows."""
-        return {SUBENTRY_TYPE_STATION: StationFlowHandler}
+        return {
+            SUBENTRY_TYPE_WEATHER_STATION: WeatherStationFlowHandler,
+            SUBENTRY_TYPE_WEATHER_LOCATION: WeatherLocationFlowHandler,
+        }
 
     @override
     async def async_on_create_entry(
         self,
         result: ConfigFlowResult,
     ) -> ConfigFlowResult:
-        """Open the station flow after creating the service entry."""
+        """Open the selected weather flow after creating the service entry."""
         subentry_result = await self.hass.config_entries.subentries.async_init(
-            (result["result"].entry_id, SUBENTRY_TYPE_STATION),
+            (result["result"].entry_id, self._initial_subentry_type),
             context=SubentryFlowContext(source=SOURCE_USER),
         )
         result["next_flow"] = (
@@ -91,96 +106,80 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Set up the provider and test access before configuration."""
+        """Choose the first weather resource."""
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
-
-        errors: dict[str, str] = {}
-        try:
-            stations = await UkrHMCClient(
-                async_get_clientsession(self.hass)
-            ).async_get_stations()
-            if not stations:
-                errors["base"] = "no_stations"
-        except UkrHMCError:
-            errors["base"] = "cannot_connect"
-
-        if not errors:
-            return self.async_create_entry(title=NAME, data={})
-
-        return self.async_show_form(
+        return self.async_show_menu(
             step_id="user",
-            data_schema=vol.Schema({}),
-            errors=errors,
+            menu_options=WEATHER_SUBENTRY_TYPES,
         )
 
+    async def async_step_weather_station(
+        self,
+        _user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Create the provider entry before adding a weather station."""
+        self._initial_subentry_type = SUBENTRY_TYPE_WEATHER_STATION
+        return self.async_create_entry(title=NAME, data={})
 
-class StationFlowHandler(ConfigSubentryFlow):
-    """Add a physical meteorological station selection."""
+    async def async_step_weather_location(
+        self,
+        _user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Create the provider entry before adding a weather location."""
+        self._initial_subentry_type = SUBENTRY_TYPE_WEATHER_LOCATION
+        return self.async_create_entry(title=NAME, data={})
 
-    async def _async_get_stations(self) -> list[UkrHMCStation]:
-        """Fetch stations for validation and selection."""
-        stations = await UkrHMCClient(
-            async_get_clientsession(self.hass)
-        ).async_get_stations()
-        return list(stations.values())
 
-    def _is_duplicate(self, unique_id: str) -> bool:
-        """Return whether this station selection already exists."""
-        return any(
-            subentry.unique_id == unique_id
-            for subentry in self._get_entry().subentries.values()
-        )
+class WeatherLocationFlowHandler(ConfigSubentryFlow):
+    """Add weather for a map location."""
 
     @override
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> SubentryFlowResult:
-        """Choose how to select a station."""
-        return self.async_show_menu(
-            step_id="user",
-            menu_options=("map", "station"),
-        )
-
-    async def async_step_map(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ) -> SubentryFlowResult:
-        """Add a dynamic nearest-station selection."""
+        """Configure a forecast for a map location."""
         errors: dict[str, str] = {}
         if user_input is not None:
             latitude = float(user_input[CONF_LOCATION][CONF_LATITUDE])
             longitude = float(user_input[CONF_LOCATION][CONF_LONGITUDE])
             unique_id = f"location:{latitude:.6f}:{longitude:.6f}"
 
-            if self._is_duplicate(unique_id):
+            if _is_duplicate(self._get_entry(), unique_id):
                 return self.async_abort(reason="already_configured")
 
+            title = str(user_input[CONF_NAME]).strip()
+            if not title:
+                title = f"{latitude:.4f}, {longitude:.4f}"
+
             try:
-                station = nearest_station(
-                    await self._async_get_stations(),
-                    latitude,
-                    longitude,
+                await UkrHMCClient(
+                    async_get_clientsession(self.hass)
+                ).async_validate_location_forecast(
+                    UkrHMCLocationForecastRequest(
+                        name=title,
+                        latitude=latitude,
+                        longitude=longitude,
+                    )
                 )
+            except UkrHMCDataError:
+                errors["base"] = "no_forecast"
             except UkrHMCError:
                 errors["base"] = "cannot_connect"
-            except ValueError:
-                errors["base"] = "no_stations"
             else:
-                title = str(user_input[CONF_NAME]).strip() or station.name
                 return self.async_create_entry(
                     title=title,
                     unique_id=unique_id,
                     data={
-                        CONF_STATION_TYPE: STATION_TYPE_DYNAMIC,
+                        CONF_NAME: title,
                         CONF_LATITUDE: latitude,
                         CONF_LONGITUDE: longitude,
                     },
                 )
 
         return self.async_show_form(
-            step_id="map",
+            step_id="user",
             data_schema=self.add_suggested_values_to_schema(
                 vol.Schema(
                     {
@@ -190,17 +189,31 @@ class StationFlowHandler(ConfigSubentryFlow):
                         ),
                     }
                 ),
-                {
+                user_input
+                or {
+                    CONF_NAME: self.hass.config.location_name,
                     CONF_LOCATION: {
                         CONF_LATITUDE: self.hass.config.latitude,
                         CONF_LONGITUDE: self.hass.config.longitude,
-                    }
+                    },
                 },
             ),
             errors=errors,
         )
 
-    async def async_step_station(
+
+class WeatherStationFlowHandler(ConfigSubentryFlow):
+    """Add weather from a physical station."""
+
+    async def _async_get_stations(self) -> list[UkrHMCStation]:
+        """Fetch stations for validation and selection."""
+        stations = await UkrHMCClient(
+            async_get_clientsession(self.hass)
+        ).async_get_stations()
+        return list(stations.values())
+
+    @override
+    async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> SubentryFlowResult:
@@ -215,7 +228,7 @@ class StationFlowHandler(ConfigSubentryFlow):
         if user_input is not None and not errors:
             station_id = int(user_input[CONF_STATION_ID])
             unique_id = f"station:{station_id}"
-            if self._is_duplicate(unique_id):
+            if _is_duplicate(self._get_entry(), unique_id):
                 return self.async_abort(reason="already_configured")
 
             station = next(
@@ -229,24 +242,24 @@ class StationFlowHandler(ConfigSubentryFlow):
                 return self.async_create_entry(
                     title=title,
                     unique_id=unique_id,
-                    data={
-                        CONF_STATION_TYPE: STATION_TYPE_STATIC,
-                        CONF_STATION_ID: station.station_id,
-                    },
+                    data={CONF_STATION_ID: station.station_id},
                 )
 
         return self.async_show_form(
-            step_id="station",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_NAME): str,
-                    vol.Required(CONF_STATION_ID): SelectSelector(
-                        SelectSelectorConfig(
-                            options=_station_options(stations),
-                            mode=SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                }
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(
+                    {
+                        vol.Required(CONF_NAME): str,
+                        vol.Required(CONF_STATION_ID): SelectSelector(
+                            SelectSelectorConfig(
+                                options=_station_options(stations),
+                                mode=SelectSelectorMode.DROPDOWN,
+                            )
+                        ),
+                    }
+                ),
+                user_input or {CONF_NAME: self.hass.config.location_name},
             ),
             errors=errors,
         )

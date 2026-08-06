@@ -10,9 +10,11 @@ ATTRIBUTION: Final = "Data provided by the Ukrainian Hydrometeorological Center"
 CONFIGURATION_URL: Final = "https://www.meteo.gov.ua/"
 
 CONF_STATION_ID: Final = "station_id"
-CONF_STATION_TYPE: Final = "station_type"
-STATION_TYPE_DYNAMIC: Final = "dynamic"
-STATION_TYPE_STATIC: Final = "static"
-SUBENTRY_TYPE_STATION: Final = "station"
+SUBENTRY_TYPE_WEATHER_LOCATION: Final = "weather_location"
+SUBENTRY_TYPE_WEATHER_STATION: Final = "weather_station"
+WEATHER_SUBENTRY_TYPES: Final = (
+    SUBENTRY_TYPE_WEATHER_STATION,
+    SUBENTRY_TYPE_WEATHER_LOCATION,
+)
 
-UPDATE_INTERVAL: Final = timedelta(minutes=30)
+UPDATE_INTERVAL: Final = timedelta(minutes=15)

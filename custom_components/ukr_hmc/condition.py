@@ -17,8 +17,32 @@ from homeassistant.components.weather import (
     ATTR_CONDITION_WINDY,
 )
 
-RAIN_KEYWORDS = ("дощ", "злив", "мряк")
-SNOW_KEYWORDS = ("сніг", "хуртов", "поземок", "крупа")
+THUNDER_KEYWORDS = ("гроза", "thunder")
+HAIL_KEYWORDS = ("град", "hail")
+RAIN_KEYWORDS = ("дощ", "злив", "мряк", "rain", "drizzle")
+SNOW_KEYWORDS = ("сніг", "хуртов", "поземок", "крупа", "snow")
+HEAVY_KEYWORDS = ("сильн", "heavy")
+FOG_KEYWORDS = ("туман", "імла", "димка", "fog", "mist", "haze")
+WIND_KEYWORDS = (
+    "буря",
+    "шквал",
+    "смерч",
+    "storm",
+    "gale",
+    "squall",
+    "tornado",
+)
+PARTLY_CLOUDY_KEYWORDS = (
+    "малохмар",
+    "невелика хмарність",
+    "мінлива хмарність",
+    "з проясненнями",
+    "mostly clear",
+    "partly cloudy",
+    "few clouds",
+)
+CLOUDY_KEYWORDS = ("хмар", "cloud", "overcast")
+CLEAR_KEYWORDS = ("ясно", "clear")
 
 
 def _has_any(description: str, keywords: tuple[str, ...]) -> bool:
@@ -33,32 +57,27 @@ def hmc_condition_to_ha(description: str, *, is_night: bool = False) -> str:
     has_snow = _has_any(condition, SNOW_KEYWORDS)
     clear_condition = ATTR_CONDITION_CLEAR_NIGHT if is_night else ATTR_CONDITION_SUNNY
     condition_rules = (
-        ("гроза" in condition and has_rain, ATTR_CONDITION_LIGHTNING_RAINY),
-        ("гроза" in condition, ATTR_CONDITION_LIGHTNING),
-        ("град" in condition, ATTR_CONDITION_HAIL),
-        (has_rain and has_snow, ATTR_CONDITION_SNOWY_RAINY),
+        (
+            _has_any(condition, THUNDER_KEYWORDS) and has_rain,
+            ATTR_CONDITION_LIGHTNING_RAINY,
+        ),
+        (_has_any(condition, THUNDER_KEYWORDS), ATTR_CONDITION_LIGHTNING),
+        (_has_any(condition, HAIL_KEYWORDS), ATTR_CONDITION_HAIL),
+        ((has_rain and has_snow) or "sleet" in condition, ATTR_CONDITION_SNOWY_RAINY),
         (has_snow, ATTR_CONDITION_SNOWY),
         (
-            "злив" in condition or ("сильн" in condition and has_rain),
+            "злив" in condition or (_has_any(condition, HEAVY_KEYWORDS) and has_rain),
             ATTR_CONDITION_POURING,
         ),
         (has_rain or "ожелед" in condition, ATTR_CONDITION_RAINY),
-        (_has_any(condition, ("туман", "імла", "димка")), ATTR_CONDITION_FOG),
-        (_has_any(condition, ("буря", "шквал", "смерч")), ATTR_CONDITION_WINDY),
         (
-            _has_any(
-                condition,
-                (
-                    "малохмар",
-                    "невелика хмарність",
-                    "мінлива хмарність",
-                    "з проясненнями",
-                ),
-            ),
-            ATTR_CONDITION_PARTLYCLOUDY,
+            _has_any(condition, FOG_KEYWORDS),
+            ATTR_CONDITION_FOG,
         ),
-        ("хмар" in condition, ATTR_CONDITION_CLOUDY),
-        ("ясно" in condition, clear_condition),
+        (_has_any(condition, WIND_KEYWORDS), ATTR_CONDITION_WINDY),
+        (_has_any(condition, PARTLY_CLOUDY_KEYWORDS), ATTR_CONDITION_PARTLYCLOUDY),
+        (_has_any(condition, CLOUDY_KEYWORDS), ATTR_CONDITION_CLOUDY),
+        (_has_any(condition, CLEAR_KEYWORDS), clear_condition),
     )
 
     for matches, ha_condition in condition_rules:

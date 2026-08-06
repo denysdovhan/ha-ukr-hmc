@@ -3,25 +3,45 @@
 import asyncio
 import json
 from collections.abc import Mapping
+from datetime import UTC, datetime
+from math import isclose
 from typing import Any
 
 from aiohttp import ClientError, ClientSession
 
 from .const import (
     BASE_URL,
+    CITY_API_PATH,
+    CITY_LANGUAGE,
+    CITY_WEATHER_ACTION,
     CURRENT_PATH,
     DAY_NIGHT_PATH,
     FORECAST_PATH,
     ICON_LOOKUP_PATH,
+    LOCATION_MATCH_TOLERANCE,
+    QUERY_ACTION,
+    QUERY_CITY,
+    QUERY_LANGUAGE,
+    QUERY_LOCATION,
     REQUEST_HEADERS,
     REQUEST_TIMEOUT,
     STATION_CATALOG_PATH,
     WIND_LOOKUP_PATH,
 )
 from .errors import UkrHMCConnectionError, UkrHMCDataError
-from .models import UkrHMCData, UkrHMCLookups, UkrHMCStation
+from .models import (
+    UkrHMCData,
+    UkrHMCLocationForecast,
+    UkrHMCLocationForecastRequest,
+    UkrHMCLookups,
+    UkrHMCStation,
+)
 from .parsers import (
+    parse_current_location_forecast,
     parse_forecasts,
+    parse_hourly_forecasts,
+    parse_location_daily_forecasts,
+    parse_location_forecast_point,
     parse_lookups,
     parse_night_station_ids,
     parse_observations,
@@ -52,13 +72,18 @@ class UkrHMCClient:
             msg = f"Cannot fetch {path}"
             raise UkrHMCConnectionError(msg) from exc
 
-    async def _get_json(self, path: str) -> Mapping[str, Any]:
+    async def _get_json(
+        self,
+        path: str,
+        params: Mapping[str, str | int] | None = None,
+    ) -> Mapping[str, Any]:
         """Fetch a JSON payload served with any content type."""
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT):
                 response = await self._session.get(
                     f"{BASE_URL}{path}",
                     headers=REQUEST_HEADERS,
+                    params=params,
                 )
                 response.raise_for_status()
                 payload = await response.json(content_type=None)
@@ -92,18 +117,101 @@ class UkrHMCClient:
             self._lookups = parse_lookups(icon_script, wind_script)
         return self._lookups
 
-    async def async_get_data(self) -> UkrHMCData:
+    async def _async_get_location_forecast(
+        self,
+        request: UkrHMCLocationForecastRequest,
+    ) -> UkrHMCLocationForecast:
+        """Return the provider's forecast for an explicit location."""
+        city = request.name.strip()
+        if not city:
+            msg = "Location forecast city label is required"
+            raise UkrHMCDataError(msg)
+        payload = await self._get_json(
+            CITY_API_PATH,
+            params={
+                QUERY_ACTION: CITY_WEATHER_ACTION,
+                QUERY_CITY: city,
+                QUERY_LOCATION: f"{request.latitude},{request.longitude}",
+                QUERY_LANGUAGE: CITY_LANGUAGE,
+            },
+        )
+        latitude, longitude = parse_location_forecast_point(payload)
+        if not (
+            isclose(
+                latitude,
+                request.latitude,
+                abs_tol=LOCATION_MATCH_TOLERANCE,
+            )
+            and isclose(
+                longitude,
+                request.longitude,
+                abs_tol=LOCATION_MATCH_TOLERANCE,
+            )
+        ):
+            msg = "Provider forecast location does not match the requested point"
+            raise UkrHMCDataError(msg)
+        return UkrHMCLocationForecast(
+            current=parse_current_location_forecast(payload, datetime.now(UTC)),
+            hourly_forecasts=parse_hourly_forecasts(payload),
+            daily_forecasts=parse_location_daily_forecasts(payload),
+        )
+
+    async def async_validate_location_forecast(
+        self,
+        request: UkrHMCLocationForecastRequest,
+    ) -> UkrHMCLocationForecast:
+        """Return a validated, non-empty location forecast."""
+        forecast = await self._async_get_location_forecast(request)
+        if not forecast.hourly_forecasts:
+            msg = "No hourly forecast data for the requested location"
+            raise UkrHMCDataError(msg)
+        return forecast
+
+    async def async_get_data(
+        self,
+        location_forecasts: Mapping[
+            str,
+            UkrHMCLocationForecastRequest,
+        ]
+        | None = None,
+        *,
+        include_station_data: bool = True,
+    ) -> UkrHMCData:
         """Fetch one complete provider snapshot."""
-        stations, lookups, current, forecasts, day_night = await asyncio.gather(
-            self.async_get_stations(),
-            self._async_get_lookups(),
-            self._get_json(CURRENT_PATH),
-            self._get_json(FORECAST_PATH),
-            self._get_json(DAY_NIGHT_PATH),
+        location_requests = location_forecasts or {}
+        stations = {}
+        observations = {}
+        forecasts = {}
+        night_station_ids = frozenset()
+        if include_station_data:
+            (
+                stations,
+                lookups,
+                current,
+                forecast_payload,
+                day_night,
+            ) = await asyncio.gather(
+                self.async_get_stations(),
+                self._async_get_lookups(),
+                self._get_json(CURRENT_PATH),
+                self._get_json(FORECAST_PATH),
+                self._get_json(DAY_NIGHT_PATH),
+            )
+            observations = parse_observations(current, lookups)
+            forecasts = parse_forecasts(forecast_payload, lookups)
+            night_station_ids = parse_night_station_ids(day_night)
+        location_results = await asyncio.gather(
+            *(
+                self._async_get_location_forecast(request)
+                for request in location_requests.values()
+            )
         )
         return UkrHMCData.create(
             stations=stations,
-            observations=parse_observations(current, lookups),
-            forecasts=parse_forecasts(forecasts, lookups),
-            night_station_ids=parse_night_station_ids(day_night),
+            observations=observations,
+            forecasts=forecasts,
+            location_forecasts=dict(
+                zip(location_requests, location_results, strict=True)
+            ),
+            night_station_ids=night_station_ids,
         )

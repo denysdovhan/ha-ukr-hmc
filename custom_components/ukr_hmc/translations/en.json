@@ -4,7 +4,11 @@
     "step": {
       "user": {
         "title": "Connect to UkrHMC",
-        "description": "Connect Home Assistant to public weather data from the Ukrainian Hydrometeorological Center."
+        "description": "Choose a weather station or a weather location.",
+        "menu_options": {
+          "weather_station": "Weather station",
+          "weather_location": "Weather location"
+        }
       }
     },
     "error": {
@@ -16,37 +20,17 @@
     }
   },
   "config_subentries": {
-    "station": {
+    "weather_station": {
       "step": {
         "user": {
-          "title": "Add meteorological station",
-          "description": "How do you want to select a physical meteorological station?",
-          "menu_options": {
-            "map": "Use the nearest station",
-            "station": "Select a station from the list"
-          }
-        },
-        "map": {
-          "title": "Use the nearest station",
-          "description": "Select a location. The nearest physical UkrHMC station is resolved whenever data updates.",
+          "title": "Add weather station",
+          "description": "Measured conditions with daily, day, and night forecasts. Hourly forecasts are unavailable.",
           "data": {
             "name": "Name",
-            "location": "Location"
+            "station_id": "Weather station"
           },
           "data_description": {
-            "name": "Name for this weather location.",
-            "location": "Location used to find the nearest station."
-          }
-        },
-        "station": {
-          "title": "Select meteorological station",
-          "description": "Select a physical station from the UkrHMC catalog.",
-          "data": {
-            "name": "Name",
-            "station_id": "Meteorological station"
-          },
-          "data_description": {
-            "name": "Name for this weather location.",
+            "name": "Name shown in Home Assistant.",
             "station_id": "Station names and regions are provided by UkrHMC."
           }
         }
@@ -57,18 +41,48 @@
         "no_stations": "UkrHMC returned no stations."
       },
       "abort": {
-        "already_configured": "This station selection is already configured."
+        "already_configured": "This weather station is already configured."
       },
       "initiate_flow": {
-        "user": "Add meteorological station"
+        "user": "Add weather station"
       },
-      "entry_type": "Meteorological station"
+      "entry_type": "Weather station"
+    },
+    "weather_location": {
+      "step": {
+        "user": {
+          "title": "Add weather location",
+          "description": "Forecast conditions for the current hour, with hourly and daily forecasts. Station measurements are not used.",
+          "data": {
+            "name": "Name",
+            "location": "Location"
+          },
+          "data_description": {
+            "name": "Name shown in Home Assistant.",
+            "location": "Point used for current conditions and forecasts."
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "Failed to connect to UkrHMC.",
+        "no_forecast": "UkrHMC returned no forecast for this location."
+      },
+      "abort": {
+        "already_configured": "This weather location is already configured."
+      },
+      "initiate_flow": {
+        "user": "Add weather location"
+      },
+      "entry_type": "Weather location"
     }
   },
   "entity": {
     "sensor": {
       "condition": {
         "name": "Condition"
+      },
+      "weather": {
+        "name": "Weather"
       },
       "temperature": {
         "name": "Temperature"
@@ -86,7 +100,7 @@
         "name": "Wind direction"
       },
       "observation_time": {
-        "name": "Observation time"
+        "name": "Data time"
       }
     }
   }

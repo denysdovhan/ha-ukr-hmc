@@ -4,12 +4,23 @@ from typing import Final
 
 # API endpoints.
 BASE_URL: Final = "https://www.meteo.gov.ua"
+CITY_API_PATH: Final = "/fmi.json"
 CURRENT_PATH: Final = "/_/m/current.js"
 DAY_NIGHT_PATH: Final = "/_/_e5m.json"
 FORECAST_PATH: Final = "/_/m/prognoz.js"
 ICON_LOOKUP_PATH: Final = "/ua/_meteo-icons.js"
 STATION_CATALOG_PATH: Final = "/ua/_meteo-stations.js"
 WIND_LOOKUP_PATH: Final = "/ua/_meteo-winds.js"
+
+# Location forecast request values.
+CITY_WEATHER_ACTION: Final = "getCityWeather"
+CITY_LANGUAGE: Final = "ua"
+
+# Location forecast query parameter names.
+QUERY_ACTION: Final = "action"
+QUERY_CITY: Final = "city"
+QUERY_LOCATION: Final = "latlon"
+QUERY_LANGUAGE: Final = "lang"
 
 # JavaScript variable names.
 CONDITION_TITLES_VARIABLE: Final = "METEO_ICONS_TITLES"
@@ -63,6 +74,26 @@ OBSERVATION_NIGHT_ICON_KEY: Final = "IM_N"
 OBSERVATION_PHENOMENON_CODE_KEY: Final = "C_O"
 OBSERVATION_INDICATOR_CODE_KEY: Final = "C_I"
 
+# Location forecast response keys.
+HOURLY_METADATA_KEY: Final = "dataTabs"
+LOCATION_POINT_KEY: Final = "latlon"
+HOURLY_FORECASTS_KEY: Final = "dataDetailed"
+LOCATION_FORECAST_RECORDS_KEY: Final = "fulldata"
+HOURLY_TIME_KEY: Final = "time"
+HOURLY_MAXIMUM_TEMPERATURE_KEY: Final = "maxtemp"
+HOURLY_TEMPERATURE_KEY: Final = "meantemp"
+HOURLY_PRECIPITATION_KEY: Final = "meanprecip"
+HOURLY_CONDITION_KEY: Final = "SmartSymbolText"
+HOURLY_WEATHER_KEY: Final = "Weather"
+HOURLY_IS_NIGHT_KEY: Final = "dark"
+HOURLY_WIND_COMPASS_KEY: Final = "WindCompass8"
+HOURLY_WIND_SPEED_KEY: Final = "WindSpeedMS"
+HOURLY_WIND_GUST_KEY: Final = "WindGust"
+HOURLY_HUMIDITY_KEY: Final = "Humidity"
+HOURLY_PRESSURE_KEY: Final = "pressure"
+HOURLY_WIND_DIRECTION_KEY: Final = "windDirection"
+HOURLY_DEW_POINT_KEY: Final = "dewPoint"
+
 # Forecast record keys.
 FORECAST_NIGHT_TEMPERATURE_KEY: Final = "T_N"
 FORECAST_DAY_TEMPERATURE_KEY: Final = "T_D"
@@ -91,8 +122,13 @@ DAY_NIGHT_STATIONS_KEY: Final = "dn"
 
 # Provider enum values.
 CLOUD_CONDITION_SELECTOR: Final = 0
+LOCATION_POINT_COMPONENT_COUNT: Final = 2
+LOCATION_MATCH_TOLERANCE: Final = 1e-6
 DEFAULT_WIND_DIRECTION_CODE: Final = 0
+MISSING_VALUE_MARKERS: Final = (None, "", "-")
 NIGHT_VALUE: Final = 1
+LOCATION_NIGHT_FORECAST_HOUR: Final = 3
+LOCATION_DAY_FORECAST_HOUR: Final = 15
 
 # HTTP request settings.
 REQUEST_TIMEOUT: Final = 20

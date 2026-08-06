@@ -1,71 +1,88 @@
-"""Base entity for UkrHMC station data."""
+"""Base entity for UkrHMC weather data."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTRIBUTION, CONFIGURATION_URL, DOMAIN, MANUFACTURER
+from .const import (
+    ATTRIBUTION,
+    CONF_STATION_ID,
+    CONFIGURATION_URL,
+    DOMAIN,
+    MANUFACTURER,
+    SUBENTRY_TYPE_WEATHER_STATION,
+)
 from .coordinator import UkrHMCCoordinator
-from .helpers import resolve_station_id
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
 
-    from .api import UkrHMCObservation, UkrHMCStation
+    from .api import UkrHMCHourlyForecast, UkrHMCObservation
 
 
-class UkrHMCStationEntityMixin:
-    """Resolve the station represented by a config subentry."""
+class UkrHMCWeatherEntityMixin:
+    """Expose data for a configured weather source."""
 
     coordinator: UkrHMCCoordinator
     _subentry: ConfigSubentry
     _station_id: int | None
 
-    @property
-    def station(self) -> UkrHMCStation | None:
-        """Return the currently resolved station."""
-        if self._station_id is None:
-            return None
-        return self.coordinator.data.stations.get(self._station_id)
+    def _initialize_weather_source(self, subentry: ConfigSubentry) -> None:
+        """Initialize the configured weather source."""
+        self._subentry = subentry
+        self._station_id = (
+            int(subentry.data[CONF_STATION_ID])
+            if subentry.subentry_type == SUBENTRY_TYPE_WEATHER_STATION
+            else None
+        )
 
     @property
     def observation(self) -> UkrHMCObservation | None:
-        """Return the latest observation for the resolved station."""
+        """Return the latest observation for the selected station."""
         if self._station_id is None:
             return None
         return self.coordinator.data.observations.get(self._station_id)
 
     @property
+    def current_forecast(self) -> UkrHMCHourlyForecast | None:
+        """Return the location forecast for the current provider hour."""
+        if self._station_id is not None:
+            return None
+        forecast = self.coordinator.data.location_forecasts.get(
+            self._subentry.subentry_id
+        )
+        return forecast.current if forecast else None
+
+    @property
     def available(self) -> bool:
-        """Return whether current station data is available."""
-        return self.coordinator.last_update_success and self.observation is not None
+        """Return whether current weather data is available."""
+        current_data = (
+            self.observation if self._station_id is not None else self.current_forecast
+        )
+        return self.coordinator.last_update_success and current_data is not None
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return service device information for this station selection."""
-        station = self.station
+        """Return service device information for this weather location."""
+        if self._station_id is None:
+            model = "UkrHMC Location Forecast"
+        else:
+            model = f"UkrHMC Station {self._station_id}"
         return DeviceInfo(
             configuration_url=CONFIGURATION_URL,
             entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, self._subentry.subentry_id)},
             manufacturer=MANUFACTURER,
-            model=(f"Meteorological station {station.station_id}" if station else None),
+            model=model,
             name=self._subentry.title,
         )
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Resolve dynamic stations again after a catalog update."""
-        self._station_id = resolve_station_id(self.coordinator.data, self._subentry)
-        super()._handle_coordinator_update()  # type: ignore[misc]
-
 
 class UkrHMCEntity(
-    UkrHMCStationEntityMixin,
+    UkrHMCWeatherEntityMixin,
     CoordinatorEntity[UkrHMCCoordinator],
 ):
     """Base class for coordinator-backed UkrHMC entities."""
@@ -80,5 +97,4 @@ class UkrHMCEntity(
     ) -> None:
         """Initialize the entity."""
         super().__init__(coordinator, context=subentry.subentry_id)
-        self._subentry = subentry
-        self._station_id = resolve_station_id(self.coordinator.data, subentry)
+        self._initialize_weather_source(subentry)

@@ -3,12 +3,23 @@
 from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
+from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, CONF_NAME
+
 from custom_components.ukr_hmc.api import (
     UkrHMCData,
     UkrHMCForecastDay,
+    UkrHMCHourlyForecast,
+    UkrHMCLocationForecast,
+    UkrHMCLocationForecastDay,
+    UkrHMCLocationForecastRequest,
     UkrHMCObservation,
     UkrHMCStation,
     UkrHMCWind,
+)
+from custom_components.ukr_hmc.const import (
+    CONF_STATION_ID,
+    SUBENTRY_TYPE_WEATHER_LOCATION,
+    SUBENTRY_TYPE_WEATHER_STATION,
 )
 
 STATION = UkrHMCStation(
@@ -28,6 +39,11 @@ SECOND_STATION = UkrHMCStation(
     latitude=50.35,
     longitude=30.95,
     altitude=121,
+)
+LOCATION_FORECAST_REQUEST = UkrHMCLocationForecastRequest(
+    name="Home",
+    latitude=50.4501,
+    longitude=30.5234,
 )
 WIND = UkrHMCWind(
     code=31,
@@ -79,6 +95,36 @@ FORECAST = UkrHMCForecastDay(
     sunset=time(20, 46),
     provider_code=16,
 )
+HOURLY_FORECAST = UkrHMCHourlyForecast(
+    forecast_at=datetime(
+        2026,
+        7,
+        30,
+        22,
+        tzinfo=ZoneInfo("Europe/Kyiv"),
+    ),
+    temperature=20,
+    precipitation=0,
+    condition="clear",
+    weather="Ясно",
+    is_night=True,
+    wind_compass="NW",
+    wind_speed=2,
+    wind_gust=5,
+    humidity=52,
+    pressure=1017,
+    wind_direction=315,
+    dew_point=10,
+)
+LOCATION_DAILY_FORECAST = UkrHMCLocationForecastDay(
+    date=date(2026, 7, 30),
+    temperature_night=14,
+    temperature_day=26,
+    condition_night="clear",
+    condition_day="clear",
+    weather_night="clear",
+    weather_day="clear",
+)
 DATA = UkrHMCData.create(
     stations={
         STATION.station_id: STATION,
@@ -86,16 +132,40 @@ DATA = UkrHMCData.create(
     },
     observations={STATION.station_id: OBSERVATION},
     forecasts={STATION.station_id: (FORECAST,)},
+    location_forecasts={
+        "location-subentry": UkrHMCLocationForecast(
+            current=HOURLY_FORECAST,
+            hourly_forecasts=(HOURLY_FORECAST,),
+            daily_forecasts=(LOCATION_DAILY_FORECAST,),
+        )
+    },
     night_station_ids=frozenset(),
 )
 
-STATIC_SUBENTRY_DATA = {
-    "data": {
-        "station_type": "static",
-        "station_id": STATION.station_id,
-    },
+STATION_SUBENTRY_DATA = {
+    "data": {CONF_STATION_ID: STATION.station_id},
     "subentry_id": "station-subentry",
-    "subentry_type": "station",
+    "subentry_type": SUBENTRY_TYPE_WEATHER_STATION,
     "title": "Kyiv weather",
     "unique_id": f"station:{STATION.station_id}",
+}
+
+LOCATION_SUBENTRY_DATA = {
+    "data": {
+        CONF_NAME: LOCATION_FORECAST_REQUEST.name,
+        CONF_LATITUDE: LOCATION_FORECAST_REQUEST.latitude,
+        CONF_LONGITUDE: LOCATION_FORECAST_REQUEST.longitude,
+    },
+    "subentry_id": "location-subentry",
+    "subentry_type": SUBENTRY_TYPE_WEATHER_LOCATION,
+    "title": LOCATION_FORECAST_REQUEST.name,
+    "unique_id": "location:50.450100:30.523400",
+}
+
+RADIATION_SUBENTRY_DATA = {
+    "data": {},
+    "subentry_id": "radiation-subentry",
+    "subentry_type": "radiation_station",
+    "title": "Radiation",
+    "unique_id": "radiation",
 }

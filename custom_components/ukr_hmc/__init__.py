@@ -45,5 +45,5 @@ async def _async_reload_entry(
     hass: HomeAssistant,
     entry: UkrHMCConfigEntry,
 ) -> None:
-    """Reload when station subentries change."""
+    """Reload when weather subentries change."""
     await hass.config_entries.async_reload(entry.entry_id)

@@ -12,6 +12,7 @@ from homeassistant.components.weather import (
     WeatherEntityFeature,
 )
 from homeassistant.const import (
+    UnitOfPrecipitationDepth,
     UnitOfPressure,
     UnitOfSpeed,
     UnitOfTemperature,
@@ -19,10 +20,9 @@ from homeassistant.const import (
 from homeassistant.core import callback
 
 from .condition import hmc_condition_to_ha
-from .const import ATTRIBUTION
+from .const import ATTRIBUTION, WEATHER_SUBENTRY_TYPES
 from .coordinator import UkrHMCCoordinator
-from .entity import UkrHMCStationEntityMixin
-from .helpers import resolve_station_id
+from .entity import UkrHMCWeatherEntityMixin
 
 if TYPE_CHECKING:
     from datetime import date
@@ -34,6 +34,12 @@ if TYPE_CHECKING:
     from .data import UkrHMCConfigEntry
 
 UKRAINE_TIME_ZONE = ZoneInfo("Europe/Kyiv")
+LOCATION_SUPPORTED_FEATURES = (
+    WeatherEntityFeature.FORECAST_HOURLY | WeatherEntityFeature.FORECAST_DAILY
+)
+STATION_SUPPORTED_FEATURES = (
+    WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_TWICE_DAILY
+)
 
 
 def _as_utc(forecast_date: date, forecast_time: time) -> str:
@@ -64,9 +70,11 @@ async def async_setup_entry(
     config_entry: UkrHMCConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up weather entities for station subentries."""
+    """Set up weather entities for configured locations."""
     coordinator = config_entry.runtime_data.coordinator
     for subentry in config_entry.subentries.values():
+        if subentry.subentry_type not in WEATHER_SUBENTRY_TYPES:
+            continue
         async_add_entities(
             [UkrHMCWeather(coordinator, subentry)],
             config_subentry_id=subentry.subentry_id,
@@ -74,37 +82,46 @@ async def async_setup_entry(
 
 
 class UkrHMCWeather(
-    UkrHMCStationEntityMixin,
+    UkrHMCWeatherEntityMixin,
     SingleCoordinatorWeatherEntity[UkrHMCCoordinator],
 ):
-    """Represent current and forecast weather for one station selection."""
+    """Represent current and forecast weather for one configured location."""
 
     _attr_attribution = ATTRIBUTION
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_native_precipitation_unit = UnitOfPrecipitationDepth.MILLIMETERS
     _attr_native_pressure_unit = UnitOfPressure.MMHG
     _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_native_wind_speed_unit = UnitOfSpeed.METERS_PER_SECOND
-    _attr_supported_features = (
-        WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_TWICE_DAILY
-    )
 
     def __init__(
         self,
         coordinator: UkrHMCCoordinator,
         subentry: ConfigSubentry,
     ) -> None:
-        """Initialize a station weather entity."""
+        """Initialize a weather entity."""
         super().__init__(coordinator, context=subentry.subentry_id)
-        self._subentry = subentry
-        self._station_id = resolve_station_id(coordinator.data, subentry)
+        self._initialize_weather_source(subentry)
+        self._attr_supported_features = (
+            LOCATION_SUPPORTED_FEATURES
+            if self._station_id is None
+            else STATION_SUPPORTED_FEATURES
+        )
+        if self._station_id is None:
+            self._attr_native_pressure_unit = UnitOfPressure.HPA
         self._attr_unique_id = subentry.subentry_id
 
     @property
     @override
     def condition(self) -> str | None:
         """Return the canonical current weather condition."""
-        if self.observation is None or self._station_id is None:
+        if self.current_forecast is not None:
+            return hmc_condition_to_ha(
+                self.current_forecast.condition,
+                is_night=self.current_forecast.is_night,
+            )
+        if self.observation is None:
             return None
         return hmc_condition_to_ha(
             self.observation.condition,
@@ -115,38 +132,74 @@ class UkrHMCWeather(
     @override
     def native_temperature(self) -> float | None:
         """Return current temperature."""
+        if self.current_forecast is not None:
+            return self.current_forecast.temperature
         return self.observation.temperature if self.observation else None
 
     @property
     @override
     def humidity(self) -> float | None:
         """Return current humidity."""
+        if self.current_forecast is not None:
+            return self.current_forecast.humidity
         return self.observation.humidity if self.observation else None
 
     @property
     @override
     def native_pressure(self) -> float | None:
         """Return current pressure."""
+        if self.current_forecast is not None:
+            return self.current_forecast.pressure
         return self.observation.pressure if self.observation else None
 
     @property
     @override
     def native_wind_speed(self) -> float | None:
         """Return current wind speed."""
+        if self.current_forecast is not None:
+            return self.current_forecast.wind_speed
         return self.observation.wind_speed if self.observation else None
 
     @property
     @override
-    def wind_bearing(self) -> str | None:
-        """Return current cardinal wind direction."""
+    def wind_bearing(self) -> float | str | None:
+        """Return current wind direction."""
+        if self.current_forecast is not None:
+            return (
+                self.current_forecast.wind_direction
+                if self.current_forecast.wind_direction is not None
+                else self.current_forecast.wind_compass
+            )
         return self.observation.wind.abbreviation if self.observation else None
+
+    @property
+    @override
+    def native_wind_gust_speed(self) -> float | None:
+        """Return current wind gust speed."""
+        return self.current_forecast.wind_gust if self.current_forecast else None
+
+    @property
+    @override
+    def native_dew_point(self) -> float | None:
+        """Return current dew point."""
+        return self.current_forecast.dew_point if self.current_forecast else None
 
     @callback
     @override
     def _async_forecast_daily(self) -> list[Forecast] | None:
         """Return direct provider daily values in native units."""
         if self._station_id is None:
-            return None
+            return [
+                Forecast(
+                    datetime=_as_utc(day.date, time.min),
+                    condition=hmc_condition_to_ha(day.condition_day),
+                    native_temperature=day.temperature_day,
+                    native_templow=day.temperature_night,
+                )
+                for day in self.coordinator.data.location_forecasts[
+                    self._subentry.subentry_id
+                ].daily_forecasts
+            ]
 
         return [
             Forecast(
@@ -158,6 +211,38 @@ class UkrHMCWeather(
                 wind_bearing=day.wind_day.abbreviation,
             )
             for day in self.coordinator.data.forecasts.get(self._station_id, ())
+        ]
+
+    @callback
+    @override
+    def _async_forecast_hourly(self) -> list[Forecast] | None:
+        """Return direct provider hourly location values in native units."""
+        if self._station_id is not None:
+            return None
+
+        return [
+            Forecast(
+                datetime=hour.forecast_at.astimezone(UTC).isoformat(),
+                condition=hmc_condition_to_ha(
+                    hour.condition,
+                    is_night=hour.is_night,
+                ),
+                native_temperature=hour.temperature,
+                native_precipitation=hour.precipitation,
+                native_pressure=hour.pressure,
+                humidity=hour.humidity,
+                native_dew_point=hour.dew_point,
+                native_wind_speed=hour.wind_speed,
+                native_wind_gust_speed=hour.wind_gust,
+                wind_bearing=(
+                    hour.wind_direction
+                    if hour.wind_direction is not None
+                    else hour.wind_compass
+                ),
+            )
+            for hour in self.coordinator.data.location_forecasts[
+                self._subentry.subentry_id
+            ].hourly_forecasts
         ]
 
     @callback

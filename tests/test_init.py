@@ -13,7 +13,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ukr_hmc.const import DOMAIN
 from custom_components.ukr_hmc.data import UkrHMCRuntimeData
 
-from .fixtures import DATA, STATIC_SUBENTRY_DATA
+from .fixtures import (
+    DATA,
+    LOCATION_SUBENTRY_DATA,
+    RADIATION_SUBENTRY_DATA,
+    STATION_SUBENTRY_DATA,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -29,7 +34,11 @@ async def test_setup_creates_weather_and_current_sensors(
         title="UkrHMC",
         unique_id=DOMAIN,
         data={},
-        subentries_data=[STATIC_SUBENTRY_DATA],
+        subentries_data=[
+            STATION_SUBENTRY_DATA,
+            LOCATION_SUBENTRY_DATA,
+            RADIATION_SUBENTRY_DATA,
+        ],
     )
     entry.add_to_hass(hass)
 
@@ -59,13 +68,51 @@ async def test_setup_creates_weather_and_current_sensors(
         DOMAIN,
         "station-subentry-condition",
     )
+    weather_description_entity_id = registry.async_get_entity_id(
+        "sensor",
+        DOMAIN,
+        "station-subentry-weather",
+    )
+    location_weather_entity_id = registry.async_get_entity_id(
+        "weather",
+        DOMAIN,
+        "location-subentry",
+    )
+    location_temperature_entity_id = registry.async_get_entity_id(
+        "sensor",
+        DOMAIN,
+        "location-subentry-temperature",
+    )
+    location_condition_entity_id = registry.async_get_entity_id(
+        "sensor",
+        DOMAIN,
+        "location-subentry-condition",
+    )
+    location_weather_description_entity_id = registry.async_get_entity_id(
+        "sensor",
+        DOMAIN,
+        "location-subentry-weather",
+    )
 
     assert weather_entity_id is not None
     assert temperature_entity_id is not None
     assert condition_entity_id is not None
+    assert weather_description_entity_id is not None
+    assert location_weather_entity_id is not None
+    assert location_temperature_entity_id is not None
+    assert location_condition_entity_id is not None
+    assert location_weather_description_entity_id is not None
+    assert registry.async_get_entity_id("weather", DOMAIN, "radiation-subentry") is None
     assert hass.states.get(weather_entity_id).state == "partlycloudy"
     assert hass.states.get(temperature_entity_id).state == "25.9"
-    assert hass.states.get(condition_entity_id).state == "Хмарно з проясненнями"
+    assert hass.states.get(condition_entity_id).state == "partlycloudy"
+    assert hass.states.get(weather_description_entity_id).state == (
+        "Хмарно з проясненнями"
+    )
+    assert hass.states.get(location_weather_entity_id).state == "clear-night"
+    assert hass.states.get(location_temperature_entity_id).state == "20"
+    assert hass.states.get(location_condition_entity_id).state == "clear-night"
+    assert hass.states.get(location_weather_description_entity_id).state == "Ясно"
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert entry.state is ConfigEntryState.NOT_LOADED

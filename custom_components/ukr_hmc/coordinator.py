@@ -5,10 +5,21 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, override
 
+from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, CONF_NAME
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import UkrHMCClient, UkrHMCData, UkrHMCError
-from .const import DOMAIN, UPDATE_INTERVAL
+from .api import (
+    UkrHMCClient,
+    UkrHMCData,
+    UkrHMCError,
+    UkrHMCLocationForecastRequest,
+)
+from .const import (
+    DOMAIN,
+    SUBENTRY_TYPE_WEATHER_LOCATION,
+    SUBENTRY_TYPE_WEATHER_STATION,
+    UPDATE_INTERVAL,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -19,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
-    """Coordinate one shared provider snapshot for all station subentries."""
+    """Manage one shared provider snapshot for all weather subentries."""
 
     config_entry: UkrHMCConfigEntry
 
@@ -43,6 +54,22 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
     async def _async_update_data(self) -> UkrHMCData:
         """Fetch one complete snapshot."""
         try:
-            return await self._api.async_get_data()
+            location_forecasts = {
+                subentry.subentry_id: UkrHMCLocationForecastRequest(
+                    name=str(subentry.data[CONF_NAME]),
+                    latitude=float(subentry.data[CONF_LATITUDE]),
+                    longitude=float(subentry.data[CONF_LONGITUDE]),
+                )
+                for subentry in self.config_entry.subentries.values()
+                if subentry.subentry_type == SUBENTRY_TYPE_WEATHER_LOCATION
+            }
+            include_station_data = any(
+                subentry.subentry_type == SUBENTRY_TYPE_WEATHER_STATION
+                for subentry in self.config_entry.subentries.values()
+            )
+            return await self._api.async_get_data(
+                location_forecasts,
+                include_station_data=include_station_data,
+            )
         except UkrHMCError as exc:
             raise UpdateFailed(str(exc)) from exc

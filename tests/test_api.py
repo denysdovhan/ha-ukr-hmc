@@ -1,20 +1,39 @@
 """Tests for the isolated UkrHMC API package."""
 
+from dataclasses import replace
+from datetime import datetime
 from types import MappingProxyType
+from unittest.mock import AsyncMock, Mock
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.ukr_hmc.api import UkrHMCDataError
-from custom_components.ukr_hmc.api.const import REQUEST_HEADERS
+from custom_components.ukr_hmc.api import UkrHMCClient, UkrHMCDataError
+from custom_components.ukr_hmc.api.const import (
+    CITY_API_PATH,
+    CITY_LANGUAGE,
+    CITY_WEATHER_ACTION,
+    CURRENT_PATH,
+    DAY_NIGHT_PATH,
+    FORECAST_PATH,
+    QUERY_ACTION,
+    QUERY_CITY,
+    QUERY_LANGUAGE,
+    QUERY_LOCATION,
+    REQUEST_HEADERS,
+)
 from custom_components.ukr_hmc.api.parsers import (
+    parse_current_location_forecast,
     parse_forecasts,
+    parse_hourly_forecasts,
+    parse_location_daily_forecasts,
     parse_lookups,
     parse_night_station_ids,
     parse_observations,
     parse_station_catalog,
 )
 
-from .fixtures import DATA, STATION
+from .fixtures import DATA, LOCATION_FORECAST_REQUEST, STATION
 
 ICON_SCRIPT = (
     'const METEO_ICONS_TITLES = ["", "Дощ"]; '
@@ -109,6 +128,246 @@ def test_parse_forecasts_preserves_ranges_and_text() -> None:
     assert forecast.condition_night == "невелика хмарність, дощ"
 
 
+def _hourly_payload(
+    *,
+    point: str = "50.4501,30.5234",
+    forecasts: list[dict] | None = None,
+    daily_forecasts: list[dict] | None = None,
+) -> dict:
+    """Return one location forecast response."""
+    if forecasts is None:
+        forecasts = [{"time": "20260730T220000", "meantemp": 20}]
+    if daily_forecasts is None:
+        daily_forecasts = [
+            {
+                "time": "20260730T030000",
+                "maxtemp": 16,
+                "SmartSymbolText": "clear",
+                "dark": 1,
+            },
+            {
+                "time": "20260730T150000",
+                "maxtemp": 30,
+                "SmartSymbolText": "clear",
+                "dark": 0,
+            },
+        ]
+    return {
+        "dataTabs": {"latlon": point},
+        "dataDetailed": forecasts,
+        "fulldata": daily_forecasts,
+    }
+
+
+async def test_location_forecast_uses_city_label_and_point() -> None:
+    client = UkrHMCClient(Mock())
+    client._get_json = AsyncMock(return_value=_hourly_payload())
+
+    forecast = await client.async_validate_location_forecast(LOCATION_FORECAST_REQUEST)
+
+    assert forecast.hourly_forecasts[0].temperature == 20
+    assert forecast.daily_forecasts[0].temperature_night == 16
+    assert forecast.daily_forecasts[0].temperature_day == 30
+    client._get_json.assert_awaited_once_with(
+        CITY_API_PATH,
+        params={
+            QUERY_ACTION: CITY_WEATHER_ACTION,
+            QUERY_CITY: LOCATION_FORECAST_REQUEST.name,
+            QUERY_LOCATION: "50.4501,30.5234",
+            QUERY_LANGUAGE: CITY_LANGUAGE,
+        },
+    )
+
+
+async def test_location_forecast_requires_non_empty_city_label() -> None:
+    client = UkrHMCClient(Mock())
+
+    with pytest.raises(UkrHMCDataError, match="city label is required"):
+        await client.async_validate_location_forecast(
+            replace(LOCATION_FORECAST_REQUEST, name=" ")
+        )
+
+
+async def test_location_forecast_rejects_echoed_location_mismatch() -> None:
+    client = UkrHMCClient(Mock())
+    client._get_json = AsyncMock(return_value=_hourly_payload(point="50.4501,30.6"))
+
+    with pytest.raises(UkrHMCDataError, match="does not match"):
+        await client.async_validate_location_forecast(LOCATION_FORECAST_REQUEST)
+
+
+async def test_location_validation_rejects_empty_forecast() -> None:
+    client = UkrHMCClient(Mock())
+    client._get_json = AsyncMock(return_value=_hourly_payload(forecasts=[]))
+
+    with pytest.raises(UkrHMCDataError, match="No hourly forecast data"):
+        await client.async_validate_location_forecast(LOCATION_FORECAST_REQUEST)
+
+
+async def test_data_snapshot_keys_empty_forecast_by_caller_id() -> None:
+    client = UkrHMCClient(Mock())
+    client.async_get_stations = AsyncMock(return_value={})
+    client._async_get_lookups = AsyncMock(
+        return_value=parse_lookups(ICON_SCRIPT, WIND_SCRIPT)
+    )
+
+    async def get_json(path, params=None):
+        if path in (CURRENT_PATH, FORECAST_PATH):
+            return {}
+        if path == DAY_NIGHT_PATH:
+            return {"dn": {}}
+        assert path == CITY_API_PATH
+        assert params is not None
+        return _hourly_payload(forecasts=[])
+
+    client._get_json = AsyncMock(side_effect=get_json)
+
+    snapshot = await client.async_get_data(
+        {"location-subentry": LOCATION_FORECAST_REQUEST}
+    )
+
+    assert snapshot.location_forecasts["location-subentry"].hourly_forecasts == ()
+    assert (
+        snapshot.location_forecasts["location-subentry"]
+        .daily_forecasts[0]
+        .temperature_day
+        == 30
+    )
+
+
+async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
+    client = UkrHMCClient(Mock())
+    client.async_get_stations = AsyncMock(
+        side_effect=AssertionError("station catalog must not be fetched")
+    )
+    client._async_get_lookups = AsyncMock(
+        side_effect=AssertionError("station lookups must not be fetched")
+    )
+
+    async def get_json(path, params=None):
+        assert path == CITY_API_PATH
+        assert params is not None
+        return _hourly_payload()
+
+    client._get_json = AsyncMock(side_effect=get_json)
+
+    snapshot = await client.async_get_data(
+        {"location-subentry": LOCATION_FORECAST_REQUEST},
+        include_station_data=False,
+    )
+
+    assert snapshot.stations == {}
+    assert snapshot.observations == {}
+    assert snapshot.forecasts == {}
+    assert snapshot.night_station_ids == set()
+    assert (
+        snapshot.location_forecasts["location-subentry"].hourly_forecasts[0].temperature
+        == 20
+    )
+    assert (
+        snapshot.location_forecasts["location-subentry"]
+        .daily_forecasts[0]
+        .temperature_day
+        == 30
+    )
+    client.async_get_stations.assert_not_awaited()
+    client._async_get_lookups.assert_not_awaited()
+
+
+def test_parse_hourly_forecasts_preserves_provider_values() -> None:
+    forecasts = parse_hourly_forecasts(
+        {
+            "dataDetailed": [
+                {
+                    "time": "20260730T220000",
+                    "mintemp": 20,
+                    "maxtemp": 20,
+                    "meantemp": 20,
+                    "meanprecip": 0,
+                    "SmartSymbol": 101,
+                    "SmartSymbolText": "clear",
+                    "Weather": "clear",
+                    "dark": 1,
+                    "WindCompass8": "NW",
+                    "WindSpeedMS": 2,
+                    "WindGust": "-",
+                    "Humidity": 52,
+                    "pressure": 1017,
+                    "windDirection": 315,
+                    "dewPoint": 10,
+                },
+                {"time": "20260731T000000", "meantemp": None},
+            ]
+        }
+    )
+
+    assert len(forecasts) == 1
+    forecast = forecasts[0]
+    assert forecast.forecast_at.isoformat() == "2026-07-30T22:00:00+03:00"
+    assert forecast.temperature == 20
+    assert forecast.pressure == 1017
+    assert forecast.wind_gust is None
+
+
+def test_parse_current_location_forecast_requires_present_hour() -> None:
+    payload = {
+        "fulldata": [
+            {"time": "20260804T150000", "meantemp": 32},
+            {"time": "20260804T160000", "meantemp": 33},
+        ]
+    }
+    current = parse_current_location_forecast(
+        payload,
+        datetime(2026, 8, 4, 15, 48, tzinfo=ZoneInfo("Europe/Kyiv")),
+    )
+
+    assert current is not None
+    assert current.forecast_at.isoformat() == "2026-08-04T15:00:00+03:00"
+    assert current.temperature == 32
+    assert (
+        parse_current_location_forecast(
+            payload,
+            datetime(2026, 8, 4, 14, 48, tzinfo=ZoneInfo("Europe/Kyiv")),
+        )
+        is None
+    )
+
+
+def test_parse_location_daily_forecasts_uses_exact_provider_hours() -> None:
+    forecasts = parse_location_daily_forecasts(
+        {
+            "fulldata": [
+                {
+                    "time": "20260801T030000",
+                    "maxtemp": 19,
+                    "SmartSymbol": 101,
+                    "SmartSymbolText": "clear",
+                    "Weather": "clear",
+                },
+                {"time": "20260801T060000", "maxtemp": 17},
+                {
+                    "time": "20260801T150000",
+                    "maxtemp": 32,
+                    "SmartSymbol": 2,
+                    "SmartSymbolText": "mostly clear",
+                    "Weather": "mostly clear",
+                },
+                {"time": "20260802T030000", "maxtemp": 20},
+                {"time": "20260803T030000", "maxtemp": "-"},
+                {"time": "20260803T150000", "maxtemp": 29},
+            ]
+        }
+    )
+
+    assert len(forecasts) == 1
+    forecast = forecasts[0]
+    assert forecast.date.isoformat() == "2026-08-01"
+    assert forecast.temperature_night == 19
+    assert forecast.temperature_day == 32
+    assert forecast.condition_night == "clear"
+    assert forecast.condition_day == "mostly clear"
+
+
 def test_parse_night_station_ids() -> None:
     assert parse_night_station_ids({"dn": {"33345": 1, "33347": 0}}) == {33345}
 
@@ -119,6 +378,7 @@ def test_parse_night_station_ids() -> None:
         (parse_station_catalog, ("invalid",)),
         (parse_lookups, ("const X = [];", WIND_SCRIPT)),
         (parse_lookups, ("const METEO_ICONS_TITLES = {};", WIND_SCRIPT)),
+        (parse_location_daily_forecasts, ({},)),
         (parse_night_station_ids, ({"dn": {"invalid": 1}},)),
     ],
 )
@@ -133,6 +393,7 @@ def test_data_snapshot_copies_input_mappings() -> None:
         stations=stations,
         observations=dict(DATA.observations),
         forecasts=dict(DATA.forecasts),
+        location_forecasts=dict(DATA.location_forecasts),
         night_station_ids=DATA.night_station_ids,
     )
 

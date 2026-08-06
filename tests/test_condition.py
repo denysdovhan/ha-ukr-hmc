@@ -21,6 +21,10 @@ from custom_components.ukr_hmc.condition import hmc_condition_to_ha
         ("Гроза", False, "lightning"),
         ("Гроза, дощ", False, "lightning-rainy"),
         ("Пилова буря", False, "windy"),
+        ("clear", True, "clear-night"),
+        ("mostly clear", False, "partlycloudy"),
+        ("overcast", False, "cloudy"),
+        ("periods of moderate rain", False, "rainy"),
         ("Невідомо", False, "exceptional"),
     ],
 )
