@@ -61,6 +61,8 @@ subentry and device types.
   forecasts for configured map locations.
 - `data.py` - `UkrHMCRuntimeData` and the typed `UkrHMCConfigEntry` alias.
 - `entity.py` - shared weather data access, availability, and device metadata.
+- `icons.json` - frontend icons for generic sensor types and canonical weather
+  condition states.
 - `sensor.py` - current-condition sensor descriptions and entities.
 - `weather.py` - current weather plus forecast modes supported by each location
   type.
@@ -118,9 +120,13 @@ subentry and device types.
 
 ### Weather and sensor behavior
 
-- Expose one weather entity and current-condition sensors for canonical
+- Weather-station sources expose current-condition sensors for canonical
   condition, provider weather text, temperature, humidity, pressure, wind speed,
-  wind direction, and data time per location.
+  numeric wind direction, and data time.
+- Weather-location sources expose canonical condition, provider weather text,
+  temperature, humidity, wind speed, raw compass direction, mapped numeric wind
+  direction, and data time. Do not create a current pressure sensor because the
+  exact current-hour location record does not publish pressure.
 - Station current values come from physical observations. Location current
   values come from the exact current-hour `fulldata` record for the point.
 - Keep `condition` sensor states canonical for Home Assistant. Keep direct
@@ -140,7 +146,9 @@ subentry and device types.
 - Keep temperature ranges, textual cloudiness and precipitation, wind ranges,
   sunrise, sunset, and other unsupported fields in API models for future use.
 - The wind-direction sensor exposes degrees with the native wind-direction device
-  class. The weather entity uses the provider's compass abbreviation.
+  class. For location current values, map the direct `WindCompass8` value through
+  the provider bearing mapping and also expose the raw compass value separately.
+  The weather entity may use the provider's compass abbreviation directly.
 
 ## Provider data
 

@@ -153,9 +153,9 @@ The main JS bundle is `https://www.meteo.gov.ua/_/_.js?2025-03-11-2`. It defines
      latitude for the point.
    - Website forecast URL: `https://www.meteo.gov.ua/fmi.json?action=getCityWeather&city={NAME}&region={REGION}&lang=ua`
    - Direct location forecast URL: `https://www.meteo.gov.ua/fmi.json?action=getCityWeather&city={LABEL}&latlon={LATITUDE},{LONGITUDE}&lang=ua`
-   - Forecast response: upcoming hourly records under `dataDetailed`; the
-     broader `fulldata` series supplies the current-hour record and records used
-     by the website's daily cards.
+   - Forecast response: upcoming detailed hourly records under `dataDetailed`;
+     the broader but reduced `fulldata` series supplies the current-hour record
+     and records used by the website's daily cards.
 
    `city` must be a non-empty label, but when `latlon` is supplied that point
    controls the forecast. `region` is not required for this form. Requests
@@ -163,7 +163,7 @@ The main JS bundle is `https://www.meteo.gov.ua/_/_.js?2025-03-11-2`. It defines
    points can return HTTP 200 with no hourly records, so callers must
    validate both the echoed `dataTabs.latlon` and a non-empty `dataDetailed`.
 
-   **Hourly schema**
+   **Detailed future-hour schema (`dataDetailed`)**
    - `time`: provider-local timestamp `YYYYMMDDTHHMMSS`
    - `meantemp`, `mintemp`, `maxtemp`: temperature °C
    - `meanprecip`: precipitation mm
@@ -176,6 +176,15 @@ The main JS bundle is `https://www.meteo.gov.ua/_/_.js?2025-03-11-2`. It defines
    - `dewPoint`: dew point °C
    - `sunrise`, `sunset`: compact UTC timestamps
    - `dayLength`: minutes
+
+   **Current-hour schema (`fulldata`)**
+
+   The exact current-hour record directly supplies `time`, temperature and
+   precipitation values, condition fields, `dark`, `WindCompass8`,
+   `WindSpeedMS`, and `Humidity`. It does not publish `pressure`, numeric
+   `windDirection`, `WindGust`, or `dewPoint`. The integration therefore omits
+   current location pressure, exposes the raw compass value, and maps that
+   compass value to degrees for Home Assistant's wind-direction device class.
 
    The location result is model forecast data for the requested point. In the
    location setup mode, the exact current-hour `fulldata` record supplies

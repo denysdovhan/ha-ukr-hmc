@@ -24,8 +24,12 @@ locations use forecast values for the selected point.
   twice-daily station forecasts.
 - Location mode with current conditions from the current forecast
   hour, plus hourly and daily forecasts for the exact point.
-- Native sensors for canonical condition, provider weather text, temperature,
-  humidity, pressure, wind speed, wind direction, and data time.
+- Native station sensors for canonical condition, provider weather text,
+  temperature, humidity, pressure, wind speed, wind direction, and data time.
+- Native location sensors for canonical condition, provider weather text,
+  temperature, humidity, wind speed, compass and numeric wind direction, and data
+  time. Location pressure remains available in hourly forecasts, not as a current
+  sensor.
 - Multiple weather stations and locations under one integration entry.
 - One shared coordinator updates provider data every 15 minutes; location
   forecasts are requested only for configured map locations.
