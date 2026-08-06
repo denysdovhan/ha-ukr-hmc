@@ -3,7 +3,7 @@
 import json
 import re
 from collections.abc import Mapping
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -154,13 +154,6 @@ def _optional_str(record: Mapping[str, Any], key: str) -> str | None:
     if value in MISSING_VALUE_MARKERS:
         return None
     return str(value)
-
-
-def _parse_utc_datetime(value: object) -> datetime | None:
-    """Parse an optional compact UTC provider datetime."""
-    if value in MISSING_VALUE_MARKERS:
-        return None
-    return datetime.strptime(str(value), "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
 
 
 def _wind(lookups: UkrHMCLookups, code: object) -> UkrHMCWind:
