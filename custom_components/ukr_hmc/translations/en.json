@@ -96,6 +96,9 @@
       "wind_speed": {
         "name": "Wind speed"
       },
+      "wind_compass": {
+        "name": "Wind direction (compass)"
+      },
       "wind_direction": {
         "name": "Wind direction"
       },

@@ -12,7 +12,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ukr_hmc.const import CONFIGURATION_URL, DOMAIN
 from custom_components.ukr_hmc.coordinator import UkrHMCCoordinator
-from custom_components.ukr_hmc.sensor import SENSORS, UkrHMCSensor
+from custom_components.ukr_hmc.sensor import (
+    LOCATION_SENSORS,
+    STATION_SENSORS,
+    UkrHMCSensor,
+)
 from custom_components.ukr_hmc.weather import UkrHMCWeather, _single_wind_speed
 
 from .fixtures import (
@@ -100,11 +104,11 @@ async def test_location_weather_uses_point_current_and_native_forecasts(
     assert weather.condition == "clear-night"
     assert weather.native_temperature == 20
     assert weather.humidity == 52
-    assert weather.native_pressure == 1017
+    assert weather.native_pressure is None
     assert weather.native_wind_speed == 2
-    assert weather.native_wind_gust_speed == 5
-    assert weather.native_dew_point == 10
-    assert weather.wind_bearing == 315
+    assert weather.native_wind_gust_speed is None
+    assert weather.native_dew_point is None
+    assert weather.wind_bearing == "NW"
     assert weather.native_pressure_unit == UnitOfPressure.HPA
     assert weather.supported_features == (
         WeatherEntityFeature.FORECAST_HOURLY | WeatherEntityFeature.FORECAST_DAILY
@@ -156,7 +160,7 @@ async def test_station_current_sensors_use_observation_values(
             subentry,
             description,
         ).native_value
-        for description in SENSORS
+        for description in STATION_SENSORS
     }
 
     assert values["condition"] == "partlycloudy"
@@ -167,9 +171,12 @@ async def test_station_current_sensors_use_observation_values(
     assert values["wind_speed"] == 3
     assert values["wind_direction"] == 315
     assert values["observation_time"].isoformat() == "2026-07-30T15:00:00+03:00"
+    assert "wind_compass" not in values
 
     wind_direction = next(
-        description for description in SENSORS if description.key == "wind_direction"
+        description
+        for description in STATION_SENSORS
+        if description.key == "wind_direction"
     )
     assert wind_direction.device_class is SensorDeviceClass.WIND_DIRECTION
     assert wind_direction.native_unit_of_measurement == DEGREE
@@ -190,18 +197,27 @@ async def test_location_current_sensors_use_point_forecast_values(
             subentry,
             description,
         )
-        for description in SENSORS
+        for description in LOCATION_SENSORS
     }
 
     assert sensors["condition"].native_value == "clear-night"
     assert sensors["weather"].native_value == "Ясно"
     assert sensors["temperature"].native_value == 20
     assert sensors["humidity"].native_value == 52
-    assert sensors["pressure"].native_value == 1017
     assert sensors["wind_speed"].native_value == 2
+    assert sensors["wind_compass"].native_value == "NW"
     assert sensors["wind_direction"].native_value == 315
     assert (
         sensors["observation_time"].native_value.isoformat()
         == "2026-07-30T22:00:00+03:00"
     )
-    assert sensors["pressure"].native_unit_of_measurement == UnitOfPressure.HPA
+    assert "pressure" not in sensors
+
+    wind_compass = next(
+        description
+        for description in LOCATION_SENSORS
+        if description.key == "wind_compass"
+    )
+    assert wind_compass.device_class is None
+    assert wind_compass.native_unit_of_measurement is None
+    assert wind_compass.state_class is None

@@ -1,5 +1,6 @@
 """Shared UkrHMC test data."""
 
+from dataclasses import replace
 from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
@@ -116,6 +117,13 @@ HOURLY_FORECAST = UkrHMCHourlyForecast(
     wind_direction=315,
     dew_point=10,
 )
+CURRENT_LOCATION_FORECAST = replace(
+    HOURLY_FORECAST,
+    wind_gust=None,
+    pressure=None,
+    wind_direction=None,
+    dew_point=None,
+)
 LOCATION_DAILY_FORECAST = UkrHMCLocationForecastDay(
     date=date(2026, 7, 30),
     temperature_night=14,
@@ -134,7 +142,7 @@ DATA = UkrHMCData.create(
     forecasts={STATION.station_id: (FORECAST,)},
     location_forecasts={
         "location-subentry": UkrHMCLocationForecast(
-            current=HOURLY_FORECAST,
+            current=CURRENT_LOCATION_FORECAST,
             hourly_forecasts=(HOURLY_FORECAST,),
             daily_forecasts=(LOCATION_DAILY_FORECAST,),
         )

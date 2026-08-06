@@ -93,6 +93,16 @@ async def test_setup_creates_weather_and_current_sensors(
         DOMAIN,
         "location-subentry-weather",
     )
+    location_wind_compass_entity_id = registry.async_get_entity_id(
+        "sensor",
+        DOMAIN,
+        "location-subentry-wind_compass",
+    )
+    location_wind_direction_entity_id = registry.async_get_entity_id(
+        "sensor",
+        DOMAIN,
+        "location-subentry-wind_direction",
+    )
 
     assert weather_entity_id is not None
     assert temperature_entity_id is not None
@@ -102,6 +112,24 @@ async def test_setup_creates_weather_and_current_sensors(
     assert location_temperature_entity_id is not None
     assert location_condition_entity_id is not None
     assert location_weather_description_entity_id is not None
+    assert location_wind_compass_entity_id is not None
+    assert location_wind_direction_entity_id is not None
+    assert (
+        registry.async_get_entity_id(
+            "sensor",
+            DOMAIN,
+            "location-subentry-pressure",
+        )
+        is None
+    )
+    assert (
+        registry.async_get_entity_id(
+            "sensor",
+            DOMAIN,
+            "station-subentry-wind_compass",
+        )
+        is None
+    )
     assert registry.async_get_entity_id("weather", DOMAIN, "radiation-subentry") is None
     assert hass.states.get(weather_entity_id).state == "partlycloudy"
     assert hass.states.get(temperature_entity_id).state == "25.9"
@@ -113,6 +141,8 @@ async def test_setup_creates_weather_and_current_sensors(
     assert hass.states.get(location_temperature_entity_id).state == "20"
     assert hass.states.get(location_condition_entity_id).state == "clear-night"
     assert hass.states.get(location_weather_description_entity_id).state == "Ясно"
+    assert hass.states.get(location_wind_compass_entity_id).state == "NW"
+    assert hass.states.get(location_wind_direction_entity_id).state == "315.0"
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert entry.state is ConfigEntryState.NOT_LOADED

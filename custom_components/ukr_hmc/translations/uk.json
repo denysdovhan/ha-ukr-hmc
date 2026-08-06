@@ -96,6 +96,9 @@
       "wind_speed": {
         "name": "Швидкість вітру"
       },
+      "wind_compass": {
+        "name": "Напрямок вітру за компасом"
+      },
       "wind_direction": {
         "name": "Напрямок вітру"
       },

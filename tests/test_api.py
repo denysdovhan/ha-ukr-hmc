@@ -312,7 +312,13 @@ def test_parse_hourly_forecasts_preserves_provider_values() -> None:
 def test_parse_current_location_forecast_requires_present_hour() -> None:
     payload = {
         "fulldata": [
-            {"time": "20260804T150000", "meantemp": 32},
+            {
+                "time": "20260804T150000",
+                "meantemp": 32,
+                "WindCompass8": "NW",
+                "WindSpeedMS": 2,
+                "Humidity": 52,
+            },
             {"time": "20260804T160000", "meantemp": 33},
         ]
     }
@@ -324,6 +330,10 @@ def test_parse_current_location_forecast_requires_present_hour() -> None:
     assert current is not None
     assert current.forecast_at.isoformat() == "2026-08-04T15:00:00+03:00"
     assert current.temperature == 32
+    assert current.pressure is None
+    assert current.wind_compass == "NW"
+    assert current.wind_direction is None
+    assert current.wind_bearing == 315
     assert (
         parse_current_location_forecast(
             payload,

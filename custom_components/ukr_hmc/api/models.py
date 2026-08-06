@@ -78,6 +78,15 @@ class UkrHMCHourlyForecast:
     wind_direction: float | None
     dew_point: float | None
 
+    @property
+    def wind_bearing(self) -> float | None:
+        """Return the numeric bearing or convert the provider compass value."""
+        if self.wind_direction is not None:
+            return self.wind_direction
+        if self.wind_compass is None:
+            return None
+        return WIND_BEARINGS.get(self.wind_compass)
+
 
 @dataclass(frozen=True, slots=True)
 class UkrHMCLocationForecastDay:
