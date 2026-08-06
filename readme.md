@@ -7,16 +7,17 @@
 [![HACS][hacs-image]][hacs-url]
 
 > [!NOTE]
-> This custom integration provides weather observations and forecasts from the
+> This custom integration provides weather observations, forecasts, and
+> radiation measurements from the
 > [Ukrainian Hydrometeorological Center][ukr-hmc].
 
 > [!IMPORTANT]
 > This community project is not affiliated with the Ukrainian
 > Hydrometeorological Center. Always follow official warnings and guidance.
 
-The integration creates a weather entity and sensors for either a selected
-physical station or a location on the map. Stations use physical observations;
-locations use forecast values for the selected point.
+The integration creates weather entities and sensors for selected physical
+stations or map locations, plus radiation sensors for selected monitoring
+stations.
 
 ## Features
 
@@ -30,9 +31,11 @@ locations use forecast values for the selected point.
   temperature, humidity, wind speed, compass and numeric wind direction, and data
   time. Location pressure remains available in hourly forecasts, not as a current
   sensor.
-- Multiple weather stations and locations under one integration entry.
-- One shared coordinator updates provider data every 15 minutes; location
-  forecasts are requested only for configured map locations.
+- Radiation monitoring with the provider's direct exposure dose rate in µR/h,
+  dose rate in nSv/h, and observation time.
+- Multiple weather and radiation sources under one integration entry.
+- One shared coordinator updates provider data every 15 minutes and requests
+  only the products needed by configured sources.
 
 The provider supplies temperature ranges and descriptive precipitation,
 cloudiness, and wind-range text that Home Assistant's native forecast schema
@@ -69,17 +72,24 @@ Add the integration through the Home Assistant UI:
 
 </details>
 
-When adding weather data, choose one of two types:
+When adding data, choose one of three types:
 
 - **Physical station** — select a UkrHMC station and receive its current
   observation plus daily and twice-daily station forecasts.
 - **Location on map** — place a point on the map and receive current values
   from the current forecast hour, plus hourly and daily forecasts for the exact
   location. Physical-station observations are not used.
+- **Radiation monitoring station** — select a UkrHMC station and receive its
+  direct exposure dose rate in µR/h, dose rate in nSv/h, and observation time.
+  Only stations with current data appear in the selector.
 
 Location daily forecasts follow the meteo.gov.ua presentation: the 03:00
 forecast supplies the low temperature, while the 15:00 forecast supplies the
 high temperature and condition. Days without both published hours are omitted.
+
+Radiation values are displayed as published. The integration does not derive
+safe, normal, or dangerous conditions and does not replace official warnings
+and guidance.
 
 ## Removal
 
