@@ -68,6 +68,15 @@ from .const import (
     OBSERVATION_TEMPERATURE_KEY,
     OBSERVATION_WIND_DIRECTION_KEY,
     OBSERVATION_WIND_SPEED_KEY,
+    RADIATION_DATE_KEY,
+    RADIATION_DOSE_RATE_KEY,
+    RADIATION_EXPOSURE_DOSE_RATE_KEY,
+    RADIATION_STATION_ALTITUDE_KEY,
+    RADIATION_STATION_LATITUDE_KEY,
+    RADIATION_STATION_LONGITUDE_KEY,
+    RADIATION_STATION_NAME_KEY,
+    RADIATION_STATIONS_VARIABLE,
+    RADIATION_TIME_KEY,
     REGIONS_VARIABLE,
     STATION_ALTITUDE_KEY,
     STATION_ID_KEY,
@@ -89,6 +98,8 @@ from .models import (
     UkrHMCLocationForecastDay,
     UkrHMCLookups,
     UkrHMCObservation,
+    UkrHMCRadiationObservation,
+    UkrHMCRadiationStation,
     UkrHMCStation,
     UkrHMCWind,
 )
@@ -215,6 +226,59 @@ def parse_station_catalog(script: str) -> dict[int, UkrHMCStation]:
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         msg = "Invalid station catalog data"
         raise UkrHMCDataError(msg) from exc
+
+
+def parse_radiation_station_catalog(
+    script: str,
+) -> dict[int, UkrHMCRadiationStation]:
+    """Parse physical radiation stations from provider JavaScript."""
+    records = _parse_js_assignment(script, RADIATION_STATIONS_VARIABLE)
+    if not isinstance(records, Mapping):
+        msg = "Invalid radiation station catalog"
+        raise UkrHMCDataError(msg)
+
+    try:
+        return {
+            int(station_id): UkrHMCRadiationStation(
+                station_id=int(station_id),
+                name=str(record[RADIATION_STATION_NAME_KEY]),
+                latitude=float(record[RADIATION_STATION_LATITUDE_KEY]),
+                longitude=float(record[RADIATION_STATION_LONGITUDE_KEY]),
+                altitude=int(record[RADIATION_STATION_ALTITUDE_KEY]),
+            )
+            for station_id, record in records.items()
+            if isinstance(record, Mapping)
+        }
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid radiation station catalog data"
+        raise UkrHMCDataError(msg) from exc
+
+
+def parse_radiation_observations(
+    payload: Mapping[str, Any],
+) -> dict[int, UkrHMCRadiationObservation]:
+    """Parse current radiation observations."""
+    observations: dict[int, UkrHMCRadiationObservation] = {}
+    try:
+        for station_id, record in payload.items():
+            if station_id == "0" or not isinstance(record, Mapping):
+                continue
+            exposure_dose_rate = float(record[RADIATION_EXPOSURE_DOSE_RATE_KEY])
+            dose_rate = float(record[RADIATION_DOSE_RATE_KEY])
+            if exposure_dose_rate < 0 or dose_rate < 0:
+                continue
+            observations[int(station_id)] = UkrHMCRadiationObservation(
+                observed_at=datetime.strptime(
+                    f"{record[RADIATION_DATE_KEY]} {record[RADIATION_TIME_KEY]}",
+                    "%d.%m.%Y %H:%M:%S",
+                ).replace(tzinfo=UKRAINE_TIME_ZONE),
+                exposure_dose_rate=exposure_dose_rate,
+                dose_rate=dose_rate,
+            )
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid radiation observation data"
+        raise UkrHMCDataError(msg) from exc
+    return observations
 
 
 def parse_lookups(icon_script: str, wind_script: str) -> UkrHMCLookups:

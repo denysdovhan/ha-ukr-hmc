@@ -334,6 +334,11 @@ These are not core weather, but exist in the same JS bundle:
 - `VR` (number): exposure dose rate (µR/hour)
 - `VZ` (number): dose rate (nSv/h)
 
+Parse each record's `CD` and `CH` together in `Europe/Kyiv`; stations can report
+different observation hours in the same snapshot. The frontend treats a
+negative `VZ` as data being checked, not as a physical reading. A catalog station
+omitted from the snapshot has no received data.
+
 **Sample**
 
 ```json
@@ -407,6 +412,7 @@ These are not core weather, but exist in the same JS bundle:
   - `HYDRO_POSTS` entries contain river name (`R`), post name (`P`), and a point (`X`,`Y`).
 - Radiation stations list: `https://www.meteo.gov.ua/ua/_radio-posts.js?221207-0`
   - `RADIO_POSTS` entries contain station name (`P`), a point (`X`,`Y`), and altitude (`H`).
+  - The object key is the station number used by `radioday.js`.
 
 ## Content‑Type vs payload note
 
@@ -433,7 +439,28 @@ The `.js` extension does not mean you must evaluate JavaScript. The body is plai
 ## Endpoint notes (additional probing)
 
 - `/_/m/hydroday.js?4` appears to return the **same JSON** as `/_/m/hydroday.js?75` (at least on 2026‑02‑02). The numeric query likely selects a layer or map scope, but both returned identical data in this probe.
-- `/_/m/radioday.js?4` and `/_/m/radioday.js` returned identical data in this probe.
+- On 2026-08-06, `/_/m/radioday.js?4` matched `/_/m/radioday.js`, and the dated
+  radiation-catalog query matched `/ua/_radio-posts.js`.
+- The 2026-08-06 catalog contained 189 stations and the snapshot contained 136
+  observations, leaving 53 catalog stations without a current record. Of the
+  published records, 134 used 12:00 and two used 09:00, so the per-record `CH`
+  value is authoritative.
+- The frontend renders negative measurements as “Data on checking” and missing
+  station records as “No data received”. The integration treats both as
+  unavailable and does not interpret the frontend's display thresholds as safety
+  classifications.
+
+The frontend assigns each non-negative `VZ` value to a display band. These are
+map colors and numeric ranges, not named safety levels:
+
+| Map class | Color  | `VZ` range       |
+| --------- | ------ | ---------------- |
+| `r1`      | Blue   | `< 50 nSv/h`     |
+| `r2`      | Cyan   | `50–<100 nSv/h`  |
+| `r3`      | Green  | `100–<150 nSv/h` |
+| `r4`      | Yellow | `150–<200 nSv/h` |
+| `r5`      | Orange | `200–<250 nSv/h` |
+| `r6`      | Red    | `≥ 250 nSv/h`    |
 
 ## Station and location workflow
 

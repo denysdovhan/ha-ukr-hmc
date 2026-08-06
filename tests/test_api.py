@@ -20,6 +20,8 @@ from custom_components.ukr_hmc.api.const import (
     QUERY_CITY,
     QUERY_LANGUAGE,
     QUERY_LOCATION,
+    RADIATION_DATA_PATH,
+    RADIATION_STATION_CATALOG_PATH,
     REQUEST_HEADERS,
 )
 from custom_components.ukr_hmc.api.parsers import (
@@ -30,16 +32,37 @@ from custom_components.ukr_hmc.api.parsers import (
     parse_lookups,
     parse_night_station_ids,
     parse_observations,
+    parse_radiation_observations,
+    parse_radiation_station_catalog,
     parse_station_catalog,
 )
 
-from .fixtures import DATA, LOCATION_FORECAST_REQUEST, STATION
+from .fixtures import (
+    DATA,
+    LOCATION_FORECAST_REQUEST,
+    RADIATION_OBSERVATION,
+    RADIATION_STATION,
+    STATION,
+)
 
 ICON_SCRIPT = (
     'const METEO_ICONS_TITLES = ["", "Дощ"]; '
     'const METEO_ICONS_TITLES0 = ["Ясно", "Малохмарно"];'
 )
 WIND_SCRIPT = 'const METEO_WINDS = [[], {"r": "NNE", "t": "Північно-Східний"}];'
+RADIATION_STATION_SCRIPT = (
+    'const RADIO_POSTS = {"33345": {"P": "Київ", '
+    '"X": 50.391792297363, "Y": 30.53563117981, "H": 167}};'
+)
+RADIATION_PAYLOAD = {
+    "0": "06.08.2026",
+    "33345": {
+        "CD": "06.08.2026",
+        "CH": "12:00:00",
+        "VR": 11,
+        "VZ": 96,
+    },
+}
 
 
 def test_parse_station_catalog() -> None:
@@ -53,6 +76,37 @@ def test_parse_station_catalog() -> None:
     stations = parse_station_catalog(script)
 
     assert stations[33345] == STATION
+
+
+def test_parse_radiation_catalog_and_observations() -> None:
+    stations = parse_radiation_station_catalog(RADIATION_STATION_SCRIPT)
+    observations = parse_radiation_observations(
+        {
+            **RADIATION_PAYLOAD,
+            "33347": {
+                "CD": "06.08.2026",
+                "CH": "12:00:00",
+                "VR": -1,
+                "VZ": -1,
+            },
+        }
+    )
+
+    assert stations == {RADIATION_STATION.station_id: RADIATION_STATION}
+    assert observations == {RADIATION_STATION.station_id: RADIATION_OBSERVATION}
+
+
+async def test_client_gets_radiation_catalog_and_observations() -> None:
+    client = UkrHMCClient(Mock())
+    client._get_text = AsyncMock(return_value=RADIATION_STATION_SCRIPT)
+    client._get_json = AsyncMock(return_value=RADIATION_PAYLOAD)
+
+    stations, observations = await client.async_get_radiation_data()
+
+    assert stations[RADIATION_STATION.station_id] == RADIATION_STATION
+    assert observations[RADIATION_STATION.station_id] == RADIATION_OBSERVATION
+    client._get_text.assert_awaited_once_with(RADIATION_STATION_CATALOG_PATH)
+    client._get_json.assert_awaited_once_with(RADIATION_DATA_PATH)
 
 
 def test_parse_observations_and_lookups() -> None:
@@ -243,6 +297,9 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     client._async_get_lookups = AsyncMock(
         side_effect=AssertionError("station lookups must not be fetched")
     )
+    client.async_get_radiation_data = AsyncMock(
+        side_effect=AssertionError("radiation data must not be fetched")
+    )
 
     async def get_json(path, params=None):
         assert path == CITY_API_PATH
@@ -260,6 +317,8 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     assert snapshot.observations == {}
     assert snapshot.forecasts == {}
     assert snapshot.night_station_ids == set()
+    assert snapshot.radiation_stations == {}
+    assert snapshot.radiation_observations == {}
     assert (
         snapshot.location_forecasts["location-subentry"].hourly_forecasts[0].temperature
         == 20
@@ -272,6 +331,29 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     )
     client.async_get_stations.assert_not_awaited()
     client._async_get_lookups.assert_not_awaited()
+    client.async_get_radiation_data.assert_not_awaited()
+
+
+async def test_data_snapshot_can_include_only_radiation_data() -> None:
+    client = UkrHMCClient(Mock())
+    client.async_get_radiation_data = AsyncMock(
+        return_value=(
+            {RADIATION_STATION.station_id: RADIATION_STATION},
+            {RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+        )
+    )
+
+    snapshot = await client.async_get_data(
+        include_station_data=False,
+        include_radiation_data=True,
+    )
+
+    assert snapshot.radiation_stations[RADIATION_STATION.station_id] == (
+        RADIATION_STATION
+    )
+    assert snapshot.radiation_observations[RADIATION_STATION.station_id] == (
+        RADIATION_OBSERVATION
+    )
 
 
 def test_parse_hourly_forecasts_preserves_provider_values() -> None:
@@ -386,6 +468,8 @@ def test_parse_night_station_ids() -> None:
     ("function", "args"),
     [
         (parse_station_catalog, ("invalid",)),
+        (parse_radiation_station_catalog, ("invalid",)),
+        (parse_radiation_observations, ({"33345": {}},)),
         (parse_lookups, ("const X = [];", WIND_SCRIPT)),
         (parse_lookups, ("const METEO_ICONS_TITLES = {};", WIND_SCRIPT)),
         (parse_location_daily_forecasts, ({},)),
@@ -405,6 +489,8 @@ def test_data_snapshot_copies_input_mappings() -> None:
         forecasts=dict(DATA.forecasts),
         location_forecasts=dict(DATA.location_forecasts),
         night_station_ids=DATA.night_station_ids,
+        radiation_stations=dict(DATA.radiation_stations),
+        radiation_observations=dict(DATA.radiation_observations),
     )
 
     stations.clear()

@@ -16,6 +16,7 @@ from .api import (
 )
 from .const import (
     DOMAIN,
+    SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
     UPDATE_INTERVAL,
@@ -67,9 +68,14 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
                 subentry.subentry_type == SUBENTRY_TYPE_WEATHER_STATION
                 for subentry in self.config_entry.subentries.values()
             )
+            include_radiation_data = any(
+                subentry.subentry_type == SUBENTRY_TYPE_RADIATION_STATION
+                for subentry in self.config_entry.subentries.values()
+            )
             return await self._api.async_get_data(
                 location_forecasts,
                 include_station_data=include_station_data,
+                include_radiation_data=include_radiation_data,
             )
         except UkrHMCError as exc:
             raise UpdateFailed(str(exc)) from exc

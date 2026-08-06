@@ -20,6 +20,12 @@
           "windy": "mdi:weather-windy"
         }
       },
+      "exposure_dose_rate": {
+        "default": "mdi:radioactive"
+      },
+      "dose_rate": {
+        "default": "mdi:radioactive"
+      },
       "weather": {
         "default": "mdi:weather-partly-cloudy"
       },

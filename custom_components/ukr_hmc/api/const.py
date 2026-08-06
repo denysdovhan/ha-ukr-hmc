@@ -9,6 +9,8 @@ CURRENT_PATH: Final = "/_/m/current.js"
 DAY_NIGHT_PATH: Final = "/_/_e5m.json"
 FORECAST_PATH: Final = "/_/m/prognoz.js"
 ICON_LOOKUP_PATH: Final = "/ua/_meteo-icons.js"
+RADIATION_DATA_PATH: Final = "/_/m/radioday.js"
+RADIATION_STATION_CATALOG_PATH: Final = "/ua/_radio-posts.js"
 STATION_CATALOG_PATH: Final = "/ua/_meteo-stations.js"
 WIND_LOOKUP_PATH: Final = "/ua/_meteo-winds.js"
 
@@ -25,6 +27,7 @@ QUERY_LANGUAGE: Final = "lang"
 # JavaScript variable names.
 CONDITION_TITLES_VARIABLE: Final = "METEO_ICONS_TITLES"
 CLOUD_TITLES_VARIABLE: Final = "METEO_ICONS_TITLES0"
+RADIATION_STATIONS_VARIABLE: Final = "RADIO_POSTS"
 REGIONS_VARIABLE: Final = "METEO_OBLASTI"
 STATIONS_VARIABLE: Final = "METEO_STATIONS"
 WINDS_VARIABLE: Final = "METEO_WINDS"
@@ -36,6 +39,18 @@ STATION_ALTITUDE_KEY: Final = "h"
 STATION_NAME_KEY: Final = "t"
 STATION_LATITUDE_KEY: Final = "x"
 STATION_LONGITUDE_KEY: Final = "y"
+
+# Radiation station record keys.
+RADIATION_STATION_NAME_KEY: Final = "P"
+RADIATION_STATION_LATITUDE_KEY: Final = "X"
+RADIATION_STATION_LONGITUDE_KEY: Final = "Y"
+RADIATION_STATION_ALTITUDE_KEY: Final = "H"
+
+# Radiation observation record keys.
+RADIATION_DATE_KEY: Final = "CD"
+RADIATION_TIME_KEY: Final = "CH"
+RADIATION_EXPOSURE_DOSE_RATE_KEY: Final = "VR"
+RADIATION_DOSE_RATE_KEY: Final = "VZ"
 
 # Wind record keys and bearings.
 WIND_ABBREVIATION_KEY: Final = "r"

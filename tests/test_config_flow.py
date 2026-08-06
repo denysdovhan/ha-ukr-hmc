@@ -19,12 +19,21 @@ from custom_components.ukr_hmc.api import (
 from custom_components.ukr_hmc.const import (
     CONF_STATION_ID,
     DOMAIN,
+    NAME,
+    SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
-    WEATHER_SUBENTRY_TYPES,
+    SUBENTRY_TYPES,
 )
 
-from .fixtures import SECOND_STATION, STATION
+from .fixtures import (
+    RADIATION_OBSERVATION,
+    RADIATION_STATION,
+    RADIATION_SUBENTRY_DATA,
+    SECOND_RADIATION_STATION,
+    SECOND_STATION,
+    STATION,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -49,8 +58,8 @@ async def _start_subentry_flow(
     return result
 
 
-@pytest.mark.parametrize("subentry_type", WEATHER_SUBENTRY_TYPES)
-async def test_config_flow_opens_selected_weather_subentry(
+@pytest.mark.parametrize("subentry_type", SUBENTRY_TYPES)
+async def test_config_flow_opens_selected_subentry(
     hass: HomeAssistant,
     subentry_type: str,
 ) -> None:
@@ -59,12 +68,24 @@ async def test_config_flow_opens_selected_weather_subentry(
         context={"source": SOURCE_USER},
     )
     assert result["type"] is FlowResultType.MENU
-    assert result["menu_options"] == WEATHER_SUBENTRY_TYPES
+    assert result["menu_options"] == SUBENTRY_TYPES
 
     get_stations = AsyncMock(return_value={STATION.station_id: STATION})
-    with patch(
-        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_stations",
-        new=get_stations,
+    get_radiation_data = AsyncMock(
+        return_value=(
+            {RADIATION_STATION.station_id: RADIATION_STATION},
+            {RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+        )
+    )
+    with (
+        patch(
+            "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_stations",
+            new=get_stations,
+        ),
+        patch(
+            "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_radiation_data",
+            new=get_radiation_data,
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -72,19 +93,23 @@ async def test_config_flow_opens_selected_weather_subentry(
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == DOMAIN
+    assert result["result"].unique_id is None
+    assert result["result"].title == NAME
     assert result["next_flow"][0].value == "config_subentries_flow"
     subentry_result = hass.config_entries.subentries.async_get(result["next_flow"][1])
     assert subentry_result["handler"] == (result["result"].entry_id, subentry_type)
     assert get_stations.await_count == (
         1 if subentry_type == SUBENTRY_TYPE_WEATHER_STATION else 0
     )
+    assert get_radiation_data.await_count == (
+        1 if subentry_type == SUBENTRY_TYPE_RADIATION_STATION else 0
+    )
 
 
-async def test_config_flow_prevents_duplicate_service(
+async def test_config_flow_prevents_second_entry(
     hass: HomeAssistant,
 ) -> None:
-    MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={}).add_to_hass(hass)
+    MockConfigEntry(domain=DOMAIN, data={}).add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -92,7 +117,7 @@ async def test_config_flow_prevents_duplicate_service(
     )
 
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    assert result["reason"] == "single_instance_allowed"
 
 
 async def test_explicit_station_subentry(hass: HomeAssistant) -> None:
@@ -125,6 +150,161 @@ async def test_explicit_station_subentry(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_STATION_ID: STATION.station_id}
     assert result["unique_id"] == f"station:{STATION.station_id}"
+
+
+async def test_radiation_station_subentry_filters_missing_data(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={})
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_radiation_data",
+        new=AsyncMock(
+            return_value=(
+                {
+                    RADIATION_STATION.station_id: RADIATION_STATION,
+                    SECOND_RADIATION_STATION.station_id: SECOND_RADIATION_STATION,
+                },
+                {RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+            )
+        ),
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_RADIATION_STATION,
+        )
+        station_selector = next(
+            selector
+            for field, selector in result["data_schema"].schema.items()
+            if field.schema == CONF_STATION_ID
+        )
+        assert station_selector.config["options"] == [
+            {
+                "label": RADIATION_STATION.name,
+                "value": str(RADIATION_STATION.station_id),
+            },
+        ]
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "",
+                CONF_STATION_ID: str(RADIATION_STATION.station_id),
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == RADIATION_STATION.name
+    assert result["data"] == {CONF_STATION_ID: RADIATION_STATION.station_id}
+    assert result["unique_id"] == f"radiation:{RADIATION_STATION.station_id}"
+
+
+async def test_duplicate_radiation_station_subentry_aborts(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DOMAIN,
+        data={},
+        subentries_data=[RADIATION_SUBENTRY_DATA],
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_radiation_data",
+        new=AsyncMock(
+            return_value=(
+                {RADIATION_STATION.station_id: RADIATION_STATION},
+                {RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+            )
+        ),
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_RADIATION_STATION,
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Duplicate",
+                CONF_STATION_ID: str(RADIATION_STATION.station_id),
+            },
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+
+async def test_radiation_station_subentry_connection_error(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={})
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_radiation_data",
+        new=AsyncMock(side_effect=UkrHMCConnectionError),
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_RADIATION_STATION,
+        )
+
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_radiation_station_subentry_rejects_stale_station(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={})
+    entry.add_to_hass(hass)
+    get_data = AsyncMock(
+        side_effect=[
+            (
+                {SECOND_RADIATION_STATION.station_id: SECOND_RADIATION_STATION},
+                {SECOND_RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+            ),
+            (
+                {RADIATION_STATION.station_id: RADIATION_STATION},
+                {RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+            ),
+            (
+                {RADIATION_STATION.station_id: RADIATION_STATION},
+                {RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+            ),
+        ]
+    )
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_radiation_data",
+        new=get_data,
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_RADIATION_STATION,
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "",
+                CONF_STATION_ID: str(SECOND_RADIATION_STATION.station_id),
+            },
+        )
+        assert result["errors"] == {"base": "invalid_station"}
+
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Kyiv radiation",
+                CONF_STATION_ID: str(RADIATION_STATION.station_id),
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
 async def test_location_subentry_creates_location_after_forecast_validation(

@@ -17,6 +17,7 @@ from .fixtures import (
     DATA,
     LOCATION_FORECAST_REQUEST,
     LOCATION_SUBENTRY_DATA,
+    RADIATION_SUBENTRY_DATA,
     STATION_SUBENTRY_DATA,
 )
 
@@ -28,7 +29,11 @@ async def test_coordinator_returns_provider_snapshot(hass: HomeAssistant) -> Non
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={},
-        subentries_data=[STATION_SUBENTRY_DATA, LOCATION_SUBENTRY_DATA],
+        subentries_data=[
+            STATION_SUBENTRY_DATA,
+            LOCATION_SUBENTRY_DATA,
+            RADIATION_SUBENTRY_DATA,
+        ],
     )
     api = AsyncMock()
     api.async_get_data.return_value = DATA
@@ -39,6 +44,7 @@ async def test_coordinator_returns_provider_snapshot(hass: HomeAssistant) -> Non
     api.async_get_data.assert_awaited_once_with(
         {"location-subentry": LOCATION_FORECAST_REQUEST},
         include_station_data=True,
+        include_radiation_data=True,
     )
 
 
@@ -58,6 +64,7 @@ async def test_location_only_coordinator_skips_station_data(
     api.async_get_data.assert_awaited_once_with(
         {"location-subentry": LOCATION_FORECAST_REQUEST},
         include_station_data=False,
+        include_radiation_data=False,
     )
 
 
@@ -77,6 +84,27 @@ async def test_station_only_coordinator_includes_station_data(
     api.async_get_data.assert_awaited_once_with(
         {},
         include_station_data=True,
+        include_radiation_data=False,
+    )
+
+
+async def test_radiation_only_coordinator_skips_weather_data(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={},
+        subentries_data=[RADIATION_SUBENTRY_DATA],
+    )
+    api = AsyncMock()
+    api.async_get_data.return_value = DATA
+    coordinator = UkrHMCCoordinator(hass, entry, api)
+
+    assert await coordinator._async_update_data() is DATA
+    api.async_get_data.assert_awaited_once_with(
+        {},
+        include_station_data=False,
+        include_radiation_data=True,
     )
 
 

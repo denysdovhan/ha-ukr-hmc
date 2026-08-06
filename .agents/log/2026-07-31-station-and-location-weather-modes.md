@@ -1,7 +1,7 @@
 ---
 title: Explicit station and location weather modes
 date: 2026-07-31
-status: wip
+status: done
 related_paths:
   - custom_components/ukr_hmc/api/
   - custom_components/ukr_hmc/config_flow.py

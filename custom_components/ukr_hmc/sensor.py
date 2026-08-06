@@ -18,9 +18,15 @@ from homeassistant.const import (
     UnitOfSpeed,
     UnitOfTemperature,
 )
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
 from .condition import hmc_condition_to_ha
 from .const import (
+    CONF_STATION_ID,
+    DOMAIN,
+    MANUFACTURER,
+    RADIATION_CONFIGURATION_URL,
+    SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
 )
@@ -35,7 +41,11 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
     from homeassistant.helpers.typing import StateType
 
-    from .api import UkrHMCHourlyForecast, UkrHMCObservation
+    from .api import (
+        UkrHMCHourlyForecast,
+        UkrHMCObservation,
+        UkrHMCRadiationObservation,
+    )
     from .coordinator import UkrHMCCoordinator
     from .data import UkrHMCConfigEntry
 
@@ -46,6 +56,13 @@ class UkrHMCSensorDescription(SensorEntityDescription):
 
     station_value_fn: Callable[[UkrHMCObservation, bool], StateType | datetime]
     location_value_fn: Callable[[UkrHMCHourlyForecast], StateType | datetime]
+
+
+@dataclass(frozen=True, kw_only=True)
+class UkrHMCRadiationSensorDescription(SensorEntityDescription):
+    """Describe a current radiation sensor."""
+
+    value_fn: Callable[[UkrHMCRadiationObservation], StateType | datetime]
 
 
 CONDITION_SENSOR = UkrHMCSensorDescription(
@@ -150,30 +167,30 @@ LOCATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     DATA_TIME_SENSOR,
 )
 
-SENSORS_BY_SUBENTRY_TYPE = {
-    SUBENTRY_TYPE_WEATHER_STATION: STATION_SENSORS,
-    SUBENTRY_TYPE_WEATHER_LOCATION: LOCATION_SENSORS,
-}
-
-
-async def async_setup_entry(
-    hass: HomeAssistant,  # noqa: ARG001
-    config_entry: UkrHMCConfigEntry,
-    async_add_entities: AddConfigEntryEntitiesCallback,
-) -> None:
-    """Set up current weather sensors for each configured weather source."""
-    coordinator = config_entry.runtime_data.coordinator
-    for subentry in config_entry.subentries.values():
-        descriptions = SENSORS_BY_SUBENTRY_TYPE.get(subentry.subentry_type)
-        if descriptions is None:
-            continue
-        async_add_entities(
-            [
-                UkrHMCSensor(coordinator, subentry, description)
-                for description in descriptions
-            ],
-            config_subentry_id=subentry.subentry_id,
-        )
+RADIATION_SENSORS: tuple[UkrHMCRadiationSensorDescription, ...] = (
+    UkrHMCRadiationSensorDescription(
+        key="exposure_dose_rate",
+        translation_key="exposure_dose_rate",
+        native_unit_of_measurement="µR/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda observation: observation.exposure_dose_rate,
+    ),
+    UkrHMCRadiationSensorDescription(
+        key="dose_rate",
+        translation_key="dose_rate",
+        native_unit_of_measurement="nSv/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda observation: observation.dose_rate,
+    ),
+    UkrHMCRadiationSensorDescription(
+        key="observation_time",
+        translation_key="observation_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda observation: observation.observed_at,
+    ),
+)
 
 
 class UkrHMCSensor(UkrHMCEntity, SensorEntity):
@@ -203,4 +220,87 @@ class UkrHMCSensor(UkrHMCEntity, SensorEntity):
         return self.entity_description.station_value_fn(
             self.observation,
             self._station_id in self.coordinator.data.night_station_ids,
+        )
+
+
+class UkrHMCRadiationSensor(UkrHMCEntity, SensorEntity):
+    """Represent one current radiation value."""
+
+    entity_description: UkrHMCRadiationSensorDescription
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+        description: UkrHMCRadiationSensorDescription,
+    ) -> None:
+        """Initialize a radiation sensor."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = description
+        self._radiation_station_id = int(subentry.data[CONF_STATION_ID])
+        self._attr_unique_id = f"{subentry.subentry_id}-{description.key}"
+
+    @property
+    def radiation_observation(self) -> UkrHMCRadiationObservation | None:
+        """Return the latest radiation observation."""
+        return self.coordinator.data.radiation_observations.get(
+            self._radiation_station_id
+        )
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether current radiation data is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.radiation_observation is not None
+        )
+
+    @property
+    @override
+    def native_value(self) -> StateType | datetime | None:
+        """Return the current provider value."""
+        if (observation := self.radiation_observation) is None:
+            return None
+        return self.entity_description.value_fn(observation)
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        """Return service device information for this radiation station."""
+        return DeviceInfo(
+            configuration_url=RADIATION_CONFIGURATION_URL,
+            entry_type=DeviceEntryType.SERVICE,
+            identifiers={(DOMAIN, self._subentry.subentry_id)},
+            manufacturer=MANUFACTURER,
+            model=f"UkrHMC Radiation Station {self._radiation_station_id}",
+            name=self._subentry.title,
+        )
+
+
+SENSORS_BY_SUBENTRY_TYPE = {
+    SUBENTRY_TYPE_WEATHER_STATION: (STATION_SENSORS, UkrHMCSensor),
+    SUBENTRY_TYPE_WEATHER_LOCATION: (LOCATION_SENSORS, UkrHMCSensor),
+    SUBENTRY_TYPE_RADIATION_STATION: (RADIATION_SENSORS, UkrHMCRadiationSensor),
+}
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,  # noqa: ARG001
+    config_entry: UkrHMCConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up current sensors for each configured source."""
+    coordinator = config_entry.runtime_data.coordinator
+    for subentry in config_entry.subentries.values():
+        setup = SENSORS_BY_SUBENTRY_TYPE.get(subentry.subentry_type)
+        if setup is None:
+            continue
+        descriptions, sensor_type = setup
+        async_add_entities(
+            [
+                sensor_type(coordinator, subentry, description)
+                for description in descriptions
+            ],
+            config_subentry_id=subentry.subentry_id,
         )

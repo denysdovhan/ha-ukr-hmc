@@ -35,15 +35,15 @@ documentation.
 ## Project Overview
 
 This repository implements the Home Assistant custom integration **Ukrainian
-Hydrometeorological Center** (`ukr_hmc`). It exposes observations and forecasts
-from [meteo.gov.ua](https://www.meteo.gov.ua/) for physical meteorological
-stations and configured map locations. Integration code lives in
+Hydrometeorological Center** (`ukr_hmc`). It exposes weather observations,
+forecasts, and radiation measurements from
+[meteo.gov.ua](https://www.meteo.gov.ua/). Integration code lives in
 `custom_components/ukr_hmc`.
 
-One integration config entry owns multiple typed subentries. Weather stations
-and exact forecast locations use separate subentry types. Keep other provider
-products, such as future radiation monitoring and hydrology posts, in sibling
-subentry and device types.
+One integration config entry owns multiple typed subentries. Weather stations,
+exact forecast locations, and radiation monitoring stations use separate
+subentry and device types. Keep future provider products, such as hydrology
+posts, in sibling types.
 
 ### Code structure
 
@@ -53,17 +53,18 @@ subentry and device types.
   data models, and parsers. Keep it ready for extraction to a standalone package.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
-- `config_flow.py` - creates the single service entry and separate weather-station
-  and weather-location subentries.
-- `const.py` - integration constants, weather subentry types, and the 15-minute
-  update interval.
-- `coordinator.py` - fetches one global station snapshot plus direct location
+- `config_flow.py` - creates the single service entry and typed weather and
+  radiation subentries.
+- `const.py` - integration constants, subentry types, and the 15-minute update
+  interval.
+- `coordinator.py` - fetches shared weather and radiation snapshots plus direct
   forecasts for configured map locations.
 - `data.py` - `UkrHMCRuntimeData` and the typed `UkrHMCConfigEntry` alias.
 - `entity.py` - shared weather data access, availability, and device metadata.
 - `icons.json` - frontend icons for generic sensor types and canonical weather
   condition states.
-- `sensor.py` - current-condition sensor descriptions and entities.
+- `sensor.py` - current-condition and radiation sensor descriptions and
+  entities.
 - `weather.py` - current weather plus forecast modes supported by each location
   type.
 - `translations/` - English and Ukrainian UI strings.
@@ -93,24 +94,27 @@ subentry and device types.
 - Store both in `entry.runtime_data`; do not introduce globals or singleton state.
 - The coordinator downloads the global station, observation, forecast, lookup,
   and day/night data once every 15 minutes when weather-station subentries need
-  it, plus one direct location forecast for each weather-location subentry. Do not
-  add per-location coordinators or duplicate global requests.
+  it, the radiation catalog and snapshot when radiation-station subentries need
+  them, plus one direct forecast for each weather-location subentry. Do not add
+  per-location coordinators or duplicate global requests.
 - Entities read cached coordinator data only. Never perform I/O in entity
   properties or forecast callbacks.
 - Convert provider failures to the appropriate Home Assistant coordinator or
   config-flow errors while preserving useful exception context.
 
-### Weather subentries
+### Typed subentries
 
 - Catalog records are physical meteorological stations, not cities.
 - Use `weather_station` for physical stations and `weather_location` for exact
   point forecasts. Do not store a second weather-source discriminator.
-- Future provider products should use explicit sibling types such as
-  `radiation_station` and `hydrology_post` when implemented. Weather platforms
-  must ignore other subentry types.
+- Use `radiation_station` for radiation monitoring stations. Future provider
+  products should use explicit sibling types such as `hydrology_post`. Weather
+  platforms must ignore non-weather subentry types.
 - Weather-station subentries store a selected provider station ID.
 - Weather-location subentries store only their label, latitude, and longitude.
   Do not resolve or store a physical station for map locations.
+- Radiation-station subentries store a selected provider station ID. Keep the
+  station number in device metadata, not in selector labels.
 - Add entities with `config_subentry_id=subentry.subentry_id`.
 - Weather unique IDs use the subentry ID. Sensor unique IDs use
   `{subentry_id}-{sensor_key}`.
@@ -149,6 +153,17 @@ subentry and device types.
   class. For location current values, map the direct `WindCompass8` value through
   the provider bearing mapping and also expose the raw compass value separately.
   The weather entity may use the provider's compass abbreviation directly.
+- Radiation stations expose the provider's direct `VR` value in µR/h and `VZ`
+  value in nSv/h, plus their observation time. Do not convert one measurement
+  into the other.
+- Do not expose a derived dose-level entity until Home Assistant has a suitable
+  way to present the provider map colors without misleading history colors.
+- Point radiation devices to the provider's `#RADIO` page; keep weather devices
+  linked to the main provider page.
+- Show only radiation stations with a current measurement in the selector.
+  Missing observations and negative provider sentinel values make existing
+  entities unavailable.
+- Use `Радіологічна станція` consistently in Ukrainian UI text.
 
 ## Provider data
 
@@ -156,11 +171,13 @@ Current supported endpoints are:
 
 - `/_/m/current.js` - latest observations for all stations.
 - `/_/m/prognoz.js` - forecasts for all stations.
+- `/_/m/radioday.js` - latest radiation measurements for available stations.
 - `/fmi.json?action=getCityWeather` - direct location forecast values using a
   non-empty label and `latlon`; `dataDetailed` supplies upcoming hourly values,
   while `fulldata` supplies the current-hour record and daily-card records.
 - `/_/_e5m.json` - provider day/night flags.
 - `/ua/_meteo-stations.js` - region and physical-station catalog.
+- `/ua/_radio-posts.js` - radiation monitoring station catalog.
 - `/ua/_meteo-icons.js` and `/ua/_meteo-winds.js` - condition and wind lookups.
 
 The `.js` endpoints contain JSON or JSON-compatible assignments despite their
@@ -168,15 +185,15 @@ extension and content type. Bare requests have returned HTTP 403 during live
 validation; preserve the honest browser-like user agent and meteo.gov.ua referer
 in `api/const.py`, and re-verify live behavior before changing request logic.
 
-Treat the hydrology, radiation, snow, avalanche, and alert endpoints documented
-in `meteo.md` as research only. They are outside the implemented weather scope
-unless the user explicitly expands it. Use `Europe/Kyiv` for provider-local dates
-and times.
+Treat the hydrology, snow, avalanche, and alert endpoints documented in
+`meteo.md` as research only. They are outside the implemented scope unless the
+user explicitly expands it. Use `Europe/Kyiv` for provider-local dates and times.
 
 ## Configuration and translations
 
 - Keep config-entry setup in the UI; do not add YAML configuration.
-- Preserve both weather subentry types: physical station and map location.
+- Preserve all three subentry types: physical weather station, map location, and
+  radiation monitoring station.
 - Edit `translations/en.json` and `translations/uk.json` together when UI keys
   change. Translate values only and keep JSON keys aligned.
 - Use the full official organization name in integration titles, manifest

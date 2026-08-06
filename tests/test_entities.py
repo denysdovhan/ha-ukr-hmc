@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
@@ -10,11 +11,17 @@ from homeassistant.components.weather import WeatherEntityFeature
 from homeassistant.const import DEGREE, UnitOfPressure
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ukr_hmc.const import CONFIGURATION_URL, DOMAIN
+from custom_components.ukr_hmc.const import (
+    CONFIGURATION_URL,
+    DOMAIN,
+    RADIATION_CONFIGURATION_URL,
+)
 from custom_components.ukr_hmc.coordinator import UkrHMCCoordinator
 from custom_components.ukr_hmc.sensor import (
     LOCATION_SENSORS,
+    RADIATION_SENSORS,
     STATION_SENSORS,
+    UkrHMCRadiationSensor,
     UkrHMCSensor,
 )
 from custom_components.ukr_hmc.weather import UkrHMCWeather, _single_wind_speed
@@ -22,6 +29,8 @@ from custom_components.ukr_hmc.weather import UkrHMCWeather, _single_wind_speed
 from .fixtures import (
     DATA,
     LOCATION_SUBENTRY_DATA,
+    RADIATION_STATION,
+    RADIATION_SUBENTRY_DATA,
     STATION,
     STATION_SUBENTRY_DATA,
 )
@@ -43,6 +52,14 @@ def _location_entry() -> MockConfigEntry:
         domain=DOMAIN,
         data={},
         subentries_data=[LOCATION_SUBENTRY_DATA],
+    )
+
+
+def _radiation_entry() -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={},
+        subentries_data=[RADIATION_SUBENTRY_DATA],
     )
 
 
@@ -221,3 +238,43 @@ async def test_location_current_sensors_use_point_forecast_values(
     assert wind_compass.device_class is None
     assert wind_compass.native_unit_of_measurement is None
     assert wind_compass.state_class is None
+
+
+async def test_radiation_sensors_use_direct_provider_values(
+    hass: HomeAssistant,
+) -> None:
+    entry = _radiation_entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    subentry = next(iter(entry.subentries.values()))
+    sensors = {
+        description.key: UkrHMCRadiationSensor(
+            coordinator,
+            subentry,
+            description,
+        )
+        for description in RADIATION_SENSORS
+    }
+
+    assert sensors["exposure_dose_rate"].native_value == 11
+    assert sensors["dose_rate"].native_value == 96
+    assert (
+        sensors["observation_time"].native_value.isoformat()
+        == "2026-08-06T12:00:00+03:00"
+    )
+    assert sensors["exposure_dose_rate"].available
+    assert sensors["exposure_dose_rate"].native_unit_of_measurement == "µR/h"
+    assert sensors["dose_rate"].native_unit_of_measurement == "nSv/h"
+    assert sensors["dose_rate"].state_class is SensorStateClass.MEASUREMENT
+    assert sensors["observation_time"].device_class is SensorDeviceClass.TIMESTAMP
+    assert sensors["observation_time"].device_info["model"] == (
+        f"UkrHMC Radiation Station {RADIATION_STATION.station_id}"
+    )
+    assert (
+        sensors["observation_time"].device_info["configuration_url"]
+        == RADIATION_CONFIGURATION_URL
+    )
+
+    coordinator.async_set_updated_data(replace(DATA, radiation_observations={}))
+    assert not sensors["exposure_dose_rate"].available
+    assert sensors["exposure_dose_rate"].native_value is None
