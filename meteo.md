@@ -300,6 +300,19 @@ These are not core weather, but exist in the same JS bundle:
 }
 ```
 
+The daily observation is shown at `08:00` Europe/Kyiv. The frontend skips
+records where `FR_BS` is `0` and hides zero water temperatures. The integration
+preserves `TW = 0` as a valid provider value and maps `L` directly to five
+hydrological-situation classes:
+
+| `L` | Map color | Provider meaning                                                   |
+| --: | --------- | ------------------------------------------------------------------ |
+| `0` | Green     | Calm; water remains within the riverbed                            |
+| `1` | Yellow    | Floodplain thresholds reached or exceeded                          |
+| `2` | Orange    | Dangerous high thresholds reached or exceeded                      |
+| `3` | Red       | Dangerous or historical maximum levels with mass flooding possible |
+| `4` | Dark red  | Dangerous minimum water levels                                     |
+
 ### Hydrology auto‑posts (near‑real‑time)
 
 - URL: `https://www.meteo.gov.ua/_/m/hydroauto.js?2`
@@ -439,6 +452,11 @@ The `.js` extension does not mean you must evaluate JavaScript. The body is plai
 ## Endpoint notes (additional probing)
 
 - `/_/m/hydroday.js?4` appears to return the **same JSON** as `/_/m/hydroday.js?75` (at least on 2026‑02‑02). The numeric query likely selects a layer or map scope, but both returned identical data in this probe.
+- On 2026-08-06, the hydrology catalog contained 237 posts, while the daily
+  snapshot intersected it at 177 posts with usable current data. The snapshot
+  contained 279 records because 101 current IDs were absent from the public
+  catalog. Of the current records, 276 used class `L = 0` and three used
+  `L = 1`; four records had `FR_BS = 0` and were hidden by the frontend.
 - On 2026-08-06, `/_/m/radioday.js?4` matched `/_/m/radioday.js`, and the dated
   radiation-catalog query matched `/ua/_radio-posts.js`.
 - The 2026-08-06 catalog contained 189 stations and the snapshot contained 136

@@ -8,7 +8,7 @@
 
 > [!NOTE]
 > This custom integration provides weather observations, forecasts, and
-> radiation measurements from the
+> radiation measurements, and daily hydrology observations from the
 > [Ukrainian Hydrometeorological Center][ukr-hmc].
 
 > [!IMPORTANT]
@@ -16,8 +16,8 @@
 > Hydrometeorological Center. Always follow official warnings and guidance.
 
 The integration creates weather entities and sensors for selected physical
-stations or map locations, plus radiation sensors for selected monitoring
-stations.
+stations or map locations, radiation sensors for monitoring stations, and water
+level sensors for hydrology posts.
 
 ## Features
 
@@ -33,7 +33,10 @@ stations.
   sensor.
 - Radiation monitoring with the provider's direct exposure dose rate in µR/h,
   dose rate in nSv/h, and observation time.
-- Multiple weather and radiation sources under one integration entry.
+- Hydrology monitoring with water level, water level above sea level, daily
+  change, water temperature, hydrological situation, and observation time.
+- Multiple weather, radiation, and hydrology sources under one integration
+  entry.
 - One shared coordinator updates provider data every 15 minutes and requests
   only the products needed by configured sources.
 
@@ -72,7 +75,7 @@ Add the integration through the Home Assistant UI:
 
 </details>
 
-When adding data, choose one of three types:
+When adding data, choose one of four types:
 
 - **Physical station** — select a UkrHMC station and receive its current
   observation plus daily and twice-daily station forecasts.
@@ -82,6 +85,10 @@ When adding data, choose one of three types:
 - **Radiation monitoring station** — select a UkrHMC station and receive its
   direct exposure dose rate in µR/h, dose rate in nSv/h, and observation time.
   Only stations with current data appear in the selector.
+- **Hydrology post** — select a river monitoring post and receive its daily
+  water level, water level above sea level, change, temperature, published
+  hydrological situation, and observation time. Only posts with current data
+  appear in the selector.
 
 Location daily forecasts follow the meteo.gov.ua presentation: the 03:00
 forecast supplies the low temperature, while the 15:00 forecast supplies the
@@ -90,6 +97,10 @@ high temperature and condition. Days without both published hours are omitted.
 Radiation values are displayed as published. The integration does not derive
 safe, normal, or dangerous conditions and does not replace official warnings
 and guidance.
+
+The hydrological situation sensor exposes the provider's five map classes,
+including floodplain flooding and dangerous high or low levels. It does not
+derive a flood warning and does not replace official hydrological warnings.
 
 ## Removal
 

@@ -29,6 +29,7 @@ from .api import (
     UkrHMCClient,
     UkrHMCDataError,
     UkrHMCError,
+    UkrHMCHydrologyPost,
     UkrHMCLocationForecastRequest,
     UkrHMCRadiationStation,
     UkrHMCStation,
@@ -37,6 +38,7 @@ from .const import (
     CONF_STATION_ID,
     DOMAIN,
     NAME,
+    SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
@@ -74,6 +76,22 @@ def _radiation_station_options(
     ]
 
 
+def _hydrology_post_options(
+    posts: list[UkrHMCHydrologyPost],
+) -> list[SelectOptionDict]:
+    """Return available hydrology posts sorted by river and name."""
+    return [
+        SelectOptionDict(
+            label=f"{post.name} — {post.river}",
+            value=str(post.post_id),
+        )
+        for post in sorted(
+            posts,
+            key=lambda post: (post.river.casefold(), post.name.casefold()),
+        )
+    ]
+
+
 def _is_duplicate(config_entry: ConfigEntry, unique_id: str) -> bool:
     """Return whether this configured resource already exists."""
     return any(
@@ -99,6 +117,7 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
             SUBENTRY_TYPE_WEATHER_STATION: WeatherStationFlowHandler,
             SUBENTRY_TYPE_WEATHER_LOCATION: WeatherLocationFlowHandler,
             SUBENTRY_TYPE_RADIATION_STATION: RadiationStationFlowHandler,
+            SUBENTRY_TYPE_HYDROLOGY_POST: HydrologyPostFlowHandler,
         }
 
     @override
@@ -150,6 +169,14 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Create the provider entry before adding a radiation station."""
         self._initial_subentry_type = SUBENTRY_TYPE_RADIATION_STATION
+        return self.async_create_entry(title=NAME, data={})
+
+    async def async_step_hydrology_post(
+        self,
+        _user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Create the provider entry before adding a hydrology post."""
+        self._initial_subentry_type = SUBENTRY_TYPE_HYDROLOGY_POST
         return self.async_create_entry(title=NAME, data={})
 
 
@@ -345,6 +372,66 @@ class RadiationStationFlowHandler(ConfigSubentryFlow):
                         vol.Required(CONF_STATION_ID): SelectSelector(
                             SelectSelectorConfig(
                                 options=_radiation_station_options(stations),
+                                mode=SelectSelectorMode.DROPDOWN,
+                            )
+                        ),
+                    }
+                ),
+                user_input or {CONF_NAME: self.hass.config.location_name},
+            ),
+            errors=errors,
+        )
+
+
+class HydrologyPostFlowHandler(ConfigSubentryFlow):
+    """Add a physical hydrology monitoring post."""
+
+    async def _async_get_posts(self) -> list[UkrHMCHydrologyPost]:
+        """Fetch hydrology posts with current observations."""
+        posts, observations = await UkrHMCClient(
+            async_get_clientsession(self.hass)
+        ).async_get_hydrology_data()
+        return [post for post_id, post in posts.items() if post_id in observations]
+
+    @override
+    async def async_step_user(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> SubentryFlowResult:
+        """Add an explicit hydrology post."""
+        errors: dict[str, str] = {}
+        try:
+            posts = await self._async_get_posts()
+        except UkrHMCError:
+            posts = []
+            errors["base"] = "cannot_connect"
+
+        if user_input is not None and not errors:
+            post_id = int(user_input[CONF_STATION_ID])
+            unique_id = f"hydrology:{post_id}"
+            if _is_duplicate(self._get_entry(), unique_id):
+                return self.async_abort(reason="already_configured")
+
+            post = next((post for post in posts if post.post_id == post_id), None)
+            if post is None:
+                errors["base"] = "invalid_station"
+            else:
+                title = str(user_input[CONF_NAME]).strip() or post.name
+                return self.async_create_entry(
+                    title=title,
+                    unique_id=unique_id,
+                    data={CONF_STATION_ID: post.post_id},
+                )
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(
+                    {
+                        vol.Required(CONF_NAME): str,
+                        vol.Required(CONF_STATION_ID): SelectSelector(
+                            SelectSelectorConfig(
+                                options=_hydrology_post_options(posts),
                                 mode=SelectSelectorMode.DROPDOWN,
                             )
                         ),

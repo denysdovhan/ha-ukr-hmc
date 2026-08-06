@@ -20,6 +20,7 @@ from custom_components.ukr_hmc.const import (
     CONF_STATION_ID,
     DOMAIN,
     NAME,
+    SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
@@ -27,9 +28,13 @@ from custom_components.ukr_hmc.const import (
 )
 
 from .fixtures import (
+    HYDROLOGY_OBSERVATION,
+    HYDROLOGY_POST,
+    HYDROLOGY_SUBENTRY_DATA,
     RADIATION_OBSERVATION,
     RADIATION_STATION,
     RADIATION_SUBENTRY_DATA,
+    SECOND_HYDROLOGY_POST,
     SECOND_RADIATION_STATION,
     SECOND_STATION,
     STATION,
@@ -77,6 +82,12 @@ async def test_config_flow_opens_selected_subentry(
             {RADIATION_STATION.station_id: RADIATION_OBSERVATION},
         )
     )
+    get_hydrology_data = AsyncMock(
+        return_value=(
+            {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
+            {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+        )
+    )
     with (
         patch(
             "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_stations",
@@ -85,6 +96,10 @@ async def test_config_flow_opens_selected_subentry(
         patch(
             "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_radiation_data",
             new=get_radiation_data,
+        ),
+        patch(
+            "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_hydrology_data",
+            new=get_hydrology_data,
         ),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -103,6 +118,9 @@ async def test_config_flow_opens_selected_subentry(
     )
     assert get_radiation_data.await_count == (
         1 if subentry_type == SUBENTRY_TYPE_RADIATION_STATION else 0
+    )
+    assert get_hydrology_data.await_count == (
+        1 if subentry_type == SUBENTRY_TYPE_HYDROLOGY_POST else 0
     )
 
 
@@ -305,6 +323,138 @@ async def test_radiation_station_subentry_rejects_stale_station(
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_hydrology_post_subentry_filters_missing_data(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={})
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_hydrology_data",
+        new=AsyncMock(
+            return_value=(
+                {
+                    HYDROLOGY_POST.post_id: HYDROLOGY_POST,
+                    SECOND_HYDROLOGY_POST.post_id: SECOND_HYDROLOGY_POST,
+                },
+                {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+            )
+        ),
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_HYDROLOGY_POST,
+        )
+        post_selector = next(
+            selector
+            for field, selector in result["data_schema"].schema.items()
+            if field.schema == CONF_STATION_ID
+        )
+        assert post_selector.config["options"] == [
+            {
+                "label": f"{HYDROLOGY_POST.name} — {HYDROLOGY_POST.river}",
+                "value": str(HYDROLOGY_POST.post_id),
+            },
+        ]
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "",
+                CONF_STATION_ID: str(HYDROLOGY_POST.post_id),
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == HYDROLOGY_POST.name
+    assert result["data"] == {CONF_STATION_ID: HYDROLOGY_POST.post_id}
+    assert result["unique_id"] == f"hydrology:{HYDROLOGY_POST.post_id}"
+
+
+async def test_duplicate_hydrology_post_subentry_aborts(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DOMAIN,
+        data={},
+        subentries_data=[HYDROLOGY_SUBENTRY_DATA],
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_hydrology_data",
+        new=AsyncMock(
+            return_value=(
+                {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
+                {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+            )
+        ),
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_HYDROLOGY_POST,
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Duplicate",
+                CONF_STATION_ID: str(HYDROLOGY_POST.post_id),
+            },
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+
+async def test_hydrology_post_subentry_errors(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={})
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_hydrology_data",
+        new=AsyncMock(side_effect=UkrHMCConnectionError),
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_HYDROLOGY_POST,
+        )
+
+    assert result["errors"] == {"base": "cannot_connect"}
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_hydrology_data",
+        new=AsyncMock(
+            side_effect=[
+                (
+                    {SECOND_HYDROLOGY_POST.post_id: SECOND_HYDROLOGY_POST},
+                    {SECOND_HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+                ),
+                (
+                    {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
+                    {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+                ),
+            ]
+        ),
+    ):
+        result = await _start_subentry_flow(
+            hass,
+            entry,
+            SUBENTRY_TYPE_HYDROLOGY_POST,
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Missing",
+                CONF_STATION_ID: str(SECOND_HYDROLOGY_POST.post_id),
+            },
+        )
+
+    assert result["errors"] == {"base": "invalid_station"}
 
 
 async def test_location_subentry_creates_location_after_forecast_validation(

@@ -10,6 +10,8 @@ from custom_components.ukr_hmc.api import (
     UkrHMCData,
     UkrHMCForecastDay,
     UkrHMCHourlyForecast,
+    UkrHMCHydrologyObservation,
+    UkrHMCHydrologyPost,
     UkrHMCLocationForecast,
     UkrHMCLocationForecastDay,
     UkrHMCLocationForecastRequest,
@@ -21,6 +23,7 @@ from custom_components.ukr_hmc.api import (
 )
 from custom_components.ukr_hmc.const import (
     CONF_STATION_ID,
+    SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
@@ -68,6 +71,34 @@ RADIATION_OBSERVATION = UkrHMCRadiationObservation(
     ),
     exposure_dose_rate=11,
     dose_rate=96,
+)
+HYDROLOGY_POST = UkrHMCHydrologyPost(
+    post_id=80986,
+    river="Дніпро",
+    name="Київ",
+    latitude=50.442147,
+    longitude=30.569539,
+)
+SECOND_HYDROLOGY_POST = UkrHMCHydrologyPost(
+    post_id=79043,
+    river="Дніпро",
+    name="Неданчичі",
+    latitude=51.50007,
+    longitude=30.587199,
+)
+HYDROLOGY_OBSERVATION = UkrHMCHydrologyObservation(
+    observed_at=datetime(
+        2026,
+        8,
+        6,
+        8,
+        tzinfo=ZoneInfo("Europe/Kyiv"),
+    ),
+    water_level=444.0,
+    water_level_altitude=91.44,
+    water_level_change=-0.01,
+    water_temperature=25.0,
+    level_class=1,
 )
 LOCATION_FORECAST_REQUEST = UkrHMCLocationForecastRequest(
     name="Home",
@@ -178,6 +209,8 @@ DATA = UkrHMCData.create(
     night_station_ids=frozenset(),
     radiation_stations={RADIATION_STATION.station_id: RADIATION_STATION},
     radiation_observations={RADIATION_STATION.station_id: RADIATION_OBSERVATION},
+    hydrology_posts={HYDROLOGY_POST.post_id: HYDROLOGY_POST},
+    hydrology_observations={HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
 )
 
 STATION_SUBENTRY_DATA = {
@@ -206,4 +239,12 @@ RADIATION_SUBENTRY_DATA = {
     "subentry_type": SUBENTRY_TYPE_RADIATION_STATION,
     "title": "Kyiv radiation",
     "unique_id": f"radiation:{RADIATION_STATION.station_id}",
+}
+
+HYDROLOGY_SUBENTRY_DATA = {
+    "data": {CONF_STATION_ID: HYDROLOGY_POST.post_id},
+    "subentry_id": "hydrology-subentry",
+    "subentry_type": SUBENTRY_TYPE_HYDROLOGY_POST,
+    "title": "Kyiv hydrology",
+    "unique_id": f"hydrology:{HYDROLOGY_POST.post_id}",
 }

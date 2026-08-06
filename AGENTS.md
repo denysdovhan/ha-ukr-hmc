@@ -36,14 +36,14 @@ documentation.
 
 This repository implements the Home Assistant custom integration **Ukrainian
 Hydrometeorological Center** (`ukr_hmc`). It exposes weather observations,
-forecasts, and radiation measurements from
+forecasts, radiation measurements, and daily hydrology observations from
 [meteo.gov.ua](https://www.meteo.gov.ua/). Integration code lives in
 `custom_components/ukr_hmc`.
 
 One integration config entry owns multiple typed subentries. Weather stations,
-exact forecast locations, and radiation monitoring stations use separate
-subentry and device types. Keep future provider products, such as hydrology
-posts, in sibling types.
+exact forecast locations, radiation monitoring stations, and hydrology posts use
+separate subentry and device types. Keep future provider products in sibling
+types.
 
 ### Code structure
 
@@ -53,17 +53,17 @@ posts, in sibling types.
   data models, and parsers. Keep it ready for extraction to a standalone package.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
-- `config_flow.py` - creates the single service entry and typed weather and
-  radiation subentries.
+- `config_flow.py` - creates the single service entry and typed weather,
+  radiation, and hydrology subentries.
 - `const.py` - integration constants, subentry types, and the 15-minute update
   interval.
-- `coordinator.py` - fetches shared weather and radiation snapshots plus direct
-  forecasts for configured map locations.
+- `coordinator.py` - fetches shared weather, radiation, and hydrology snapshots
+  plus direct forecasts for configured map locations.
 - `data.py` - `UkrHMCRuntimeData` and the typed `UkrHMCConfigEntry` alias.
 - `entity.py` - shared weather data access, availability, and device metadata.
 - `icons.json` - frontend icons for generic sensor types and canonical weather
   condition states.
-- `sensor.py` - current-condition and radiation sensor descriptions and
+- `sensor.py` - weather, radiation, and hydrology sensor descriptions and
   entities.
 - `weather.py` - current weather plus forecast modes supported by each location
   type.
@@ -95,8 +95,9 @@ posts, in sibling types.
 - The coordinator downloads the global station, observation, forecast, lookup,
   and day/night data once every 15 minutes when weather-station subentries need
   it, the radiation catalog and snapshot when radiation-station subentries need
-  them, plus one direct forecast for each weather-location subentry. Do not add
-  per-location coordinators or duplicate global requests.
+  them, the hydrology catalog and daily snapshot when hydrology-post subentries
+  need them, plus one direct forecast for each weather-location subentry. Do not
+  add per-location coordinators or duplicate global requests.
 - Entities read cached coordinator data only. Never perform I/O in entity
   properties or forecast callbacks.
 - Convert provider failures to the appropriate Home Assistant coordinator or
@@ -107,9 +108,10 @@ posts, in sibling types.
 - Catalog records are physical meteorological stations, not cities.
 - Use `weather_station` for physical stations and `weather_location` for exact
   point forecasts. Do not store a second weather-source discriminator.
-- Use `radiation_station` for radiation monitoring stations. Future provider
-  products should use explicit sibling types such as `hydrology_post`. Weather
-  platforms must ignore non-weather subentry types.
+- Use `radiation_station` for radiation monitoring stations and
+  `hydrology_post` for daily river monitoring posts. Future provider products
+  should use explicit sibling types. Weather platforms must ignore non-weather
+  subentry types.
 - Weather-station subentries store a selected provider station ID.
 - Weather-location subentries store only their label, latitude, and longitude.
   Do not resolve or store a physical station for map locations.
@@ -164,6 +166,15 @@ posts, in sibling types.
   Missing observations and negative provider sentinel values make existing
   entities unavailable.
 - Use `Радіологічна станція` consistently in Ukrainian UI text.
+- Hydrology posts expose the provider's direct water level in cm, water-level
+  altitude and daily change in m, water temperature in °C, 08:00 observation
+  time, and `L` hydrological-situation class. Do not derive warning states.
+- Map hydrology `L` classes to stable enum states matching the provider legend:
+  calm, floodplain flooding, dangerous high, extreme high, and dangerous low.
+- Show only hydrology posts with a current record and non-zero `FR_BS` in the
+  selector. Missing records make existing entities unavailable; `TW = 0` is a
+  valid water temperature.
+- Point hydrology devices to the provider's daily hydrological situation page.
 
 ## Provider data
 
@@ -172,12 +183,14 @@ Current supported endpoints are:
 - `/_/m/current.js` - latest observations for all stations.
 - `/_/m/prognoz.js` - forecasts for all stations.
 - `/_/m/radioday.js` - latest radiation measurements for available stations.
+- `/_/m/hydroday.js` - daily hydrology observations for available posts.
 - `/fmi.json?action=getCityWeather` - direct location forecast values using a
   non-empty label and `latlon`; `dataDetailed` supplies upcoming hourly values,
   while `fulldata` supplies the current-hour record and daily-card records.
 - `/_/_e5m.json` - provider day/night flags.
 - `/ua/_meteo-stations.js` - region and physical-station catalog.
 - `/ua/_radio-posts.js` - radiation monitoring station catalog.
+- `/ua/_hydro-posts.js` - hydrology post and river catalog.
 - `/ua/_meteo-icons.js` and `/ua/_meteo-winds.js` - condition and wind lookups.
 
 The `.js` endpoints contain JSON or JSON-compatible assignments despite their
@@ -185,15 +198,16 @@ extension and content type. Bare requests have returned HTTP 403 during live
 validation; preserve the honest browser-like user agent and meteo.gov.ua referer
 in `api/const.py`, and re-verify live behavior before changing request logic.
 
-Treat the hydrology, snow, avalanche, and alert endpoints documented in
-`meteo.md` as research only. They are outside the implemented scope unless the
-user explicitly expands it. Use `Europe/Kyiv` for provider-local dates and times.
+Treat the automatic hydrology, snow, avalanche, and alert endpoints documented
+in `meteo.md` as research only. They are outside the implemented scope unless
+the user explicitly expands it. Use `Europe/Kyiv` for provider-local dates and
+times.
 
 ## Configuration and translations
 
 - Keep config-entry setup in the UI; do not add YAML configuration.
-- Preserve all three subentry types: physical weather station, map location, and
-  radiation monitoring station.
+- Preserve all four subentry types: physical weather station, map location,
+  radiation monitoring station, and hydrology post.
 - Edit `translations/en.json` and `translations/uk.json` together when UI keys
   change. Translate values only and keep JSON keys aligned.
 - Use the full official organization name in integration titles, manifest

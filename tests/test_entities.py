@@ -8,19 +8,22 @@ from unittest.mock import AsyncMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.components.weather import WeatherEntityFeature
-from homeassistant.const import DEGREE, UnitOfPressure
+from homeassistant.const import DEGREE, UnitOfLength, UnitOfPressure, UnitOfTemperature
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ukr_hmc.const import (
     CONFIGURATION_URL,
     DOMAIN,
+    HYDROLOGY_CONFIGURATION_URL,
     RADIATION_CONFIGURATION_URL,
 )
 from custom_components.ukr_hmc.coordinator import UkrHMCCoordinator
 from custom_components.ukr_hmc.sensor import (
+    HYDROLOGY_SENSORS,
     LOCATION_SENSORS,
     RADIATION_SENSORS,
     STATION_SENSORS,
+    UkrHMCHydrologySensor,
     UkrHMCRadiationSensor,
     UkrHMCSensor,
 )
@@ -28,6 +31,9 @@ from custom_components.ukr_hmc.weather import UkrHMCWeather, _single_wind_speed
 
 from .fixtures import (
     DATA,
+    HYDROLOGY_OBSERVATION,
+    HYDROLOGY_POST,
+    HYDROLOGY_SUBENTRY_DATA,
     LOCATION_SUBENTRY_DATA,
     RADIATION_STATION,
     RADIATION_SUBENTRY_DATA,
@@ -60,6 +66,14 @@ def _radiation_entry() -> MockConfigEntry:
         domain=DOMAIN,
         data={},
         subentries_data=[RADIATION_SUBENTRY_DATA],
+    )
+
+
+def _hydrology_entry() -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={},
+        subentries_data=[HYDROLOGY_SUBENTRY_DATA],
     )
 
 
@@ -278,3 +292,76 @@ async def test_radiation_sensors_use_direct_provider_values(
     coordinator.async_set_updated_data(replace(DATA, radiation_observations={}))
     assert not sensors["exposure_dose_rate"].available
     assert sensors["exposure_dose_rate"].native_value is None
+
+
+async def test_hydrology_sensors_use_direct_provider_values(
+    hass: HomeAssistant,
+) -> None:
+    entry = _hydrology_entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    subentry = next(iter(entry.subentries.values()))
+    sensors = {
+        description.key: UkrHMCHydrologySensor(
+            coordinator,
+            subentry,
+            description,
+        )
+        for description in HYDROLOGY_SENSORS
+    }
+
+    assert sensors["water_level"].native_value == 444
+    assert sensors["water_level_altitude"].native_value == 91.44
+    assert sensors["water_level_change"].native_value == -0.01
+    assert sensors["water_temperature"].native_value == 25
+    assert sensors["hydrological_situation"].native_value == "floodplain_flooding"
+    assert (
+        sensors["observation_time"].native_value.isoformat()
+        == "2026-08-06T08:00:00+03:00"
+    )
+    assert sensors["water_level"].native_unit_of_measurement == (
+        UnitOfLength.CENTIMETERS
+    )
+    assert sensors["water_level"].suggested_unit_of_measurement == (
+        UnitOfLength.CENTIMETERS
+    )
+    assert sensors["water_level"].suggested_display_precision == 0
+    assert sensors["water_level_altitude"].native_unit_of_measurement == (
+        UnitOfLength.METERS
+    )
+    assert sensors["water_level_altitude"].suggested_display_precision == 1
+    assert sensors["water_level"].device_class is None
+    assert sensors["water_level_altitude"].device_class is None
+    assert sensors["water_level_change"].suggested_unit_of_measurement == (
+        UnitOfLength.CENTIMETERS
+    )
+    assert sensors["water_level_change"].suggested_display_precision == 0
+    assert sensors["water_level_change"].state_class is None
+    assert sensors["water_temperature"].native_unit_of_measurement == (
+        UnitOfTemperature.CELSIUS
+    )
+    assert sensors["hydrological_situation"].device_class is SensorDeviceClass.ENUM
+    assert sensors["observation_time"].device_info["model"] == (
+        f"UkrHMC Hydrology Post {HYDROLOGY_POST.post_id}"
+    )
+    assert (
+        sensors["observation_time"].device_info["configuration_url"]
+        == HYDROLOGY_CONFIGURATION_URL
+    )
+
+    coordinator.async_set_updated_data(replace(DATA, hydrology_observations={}))
+    assert not sensors["water_level"].available
+    assert sensors["water_level"].native_value is None
+
+    coordinator.async_set_updated_data(
+        replace(
+            DATA,
+            hydrology_observations={
+                HYDROLOGY_POST.post_id: replace(
+                    HYDROLOGY_OBSERVATION,
+                    level_class=9,
+                )
+            },
+        )
+    )
+    assert sensors["hydrological_situation"].native_value is None

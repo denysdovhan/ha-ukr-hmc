@@ -4,11 +4,12 @@
     "step": {
       "user": {
         "title": "Connect to UkrHMC",
-        "description": "Choose a weather station, weather location, or radiation monitoring station.",
+        "description": "Choose a weather station, weather location, radiation monitoring station, or hydrology post.",
         "menu_options": {
           "weather_station": "Weather station",
           "weather_location": "Weather location",
-          "radiation_station": "Radiation monitoring station"
+          "radiation_station": "Radiation monitoring station",
+          "hydrology_post": "Hydrology post"
         }
       }
     },
@@ -100,6 +101,34 @@
         "user": "Add radiation monitoring station"
       },
       "entry_type": "Radiation monitoring station"
+    },
+    "hydrology_post": {
+      "step": {
+        "user": {
+          "title": "Add hydrology post",
+          "description": "Daily water levels, water temperature, and hydrological situation from a post of the Ukrainian Hydrometeorological Center.",
+          "data": {
+            "name": "Name",
+            "station_id": "Hydrology post"
+          },
+          "data_description": {
+            "name": "Name shown in Home Assistant.",
+            "station_id": "Post and river names are provided by the Ukrainian Hydrometeorological Center. Only posts with current data are shown."
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "Failed to connect to the Ukrainian Hydrometeorological Center.",
+        "invalid_station": "The selected hydrology post is no longer available.",
+        "no_stations": "The Ukrainian Hydrometeorological Center returned no hydrology posts."
+      },
+      "abort": {
+        "already_configured": "This hydrology post is already configured."
+      },
+      "initiate_flow": {
+        "user": "Add hydrology post"
+      },
+      "entry_type": "Hydrology post"
     }
   },
   "entity": {
@@ -112,6 +141,28 @@
       },
       "dose_rate": {
         "name": "Dose rate"
+      },
+      "water_level": {
+        "name": "Water level"
+      },
+      "water_level_altitude": {
+        "name": "Water level above sea level"
+      },
+      "water_level_change": {
+        "name": "Daily water level change"
+      },
+      "water_temperature": {
+        "name": "Water temperature"
+      },
+      "hydrological_situation": {
+        "name": "Hydrological situation",
+        "state": {
+          "calm": "Calm",
+          "floodplain_flooding": "Floodplain flooding",
+          "dangerous_high": "Dangerous high level",
+          "extreme_high": "Extreme high level",
+          "dangerous_low": "Dangerous low level"
+        }
       },
       "weather": {
         "name": "Weather"
