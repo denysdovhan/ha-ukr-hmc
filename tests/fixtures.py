@@ -14,11 +14,14 @@ from custom_components.ukr_hmc.api import (
     UkrHMCLocationForecastDay,
     UkrHMCLocationForecastRequest,
     UkrHMCObservation,
+    UkrHMCRadiationObservation,
+    UkrHMCRadiationStation,
     UkrHMCStation,
     UkrHMCWind,
 )
 from custom_components.ukr_hmc.const import (
     CONF_STATION_ID,
+    SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
 )
@@ -40,6 +43,31 @@ SECOND_STATION = UkrHMCStation(
     latitude=50.35,
     longitude=30.95,
     altitude=121,
+)
+RADIATION_STATION = UkrHMCRadiationStation(
+    station_id=33345,
+    name="Київ",
+    latitude=50.391792297363,
+    longitude=30.53563117981,
+    altitude=167,
+)
+SECOND_RADIATION_STATION = UkrHMCRadiationStation(
+    station_id=33347,
+    name="Бориспіль",
+    latitude=50.35,
+    longitude=30.95,
+    altitude=121,
+)
+RADIATION_OBSERVATION = UkrHMCRadiationObservation(
+    observed_at=datetime(
+        2026,
+        8,
+        6,
+        12,
+        tzinfo=ZoneInfo("Europe/Kyiv"),
+    ),
+    exposure_dose_rate=11,
+    dose_rate=96,
 )
 LOCATION_FORECAST_REQUEST = UkrHMCLocationForecastRequest(
     name="Home",
@@ -148,6 +176,8 @@ DATA = UkrHMCData.create(
         )
     },
     night_station_ids=frozenset(),
+    radiation_stations={RADIATION_STATION.station_id: RADIATION_STATION},
+    radiation_observations={RADIATION_STATION.station_id: RADIATION_OBSERVATION},
 )
 
 STATION_SUBENTRY_DATA = {
@@ -171,9 +201,9 @@ LOCATION_SUBENTRY_DATA = {
 }
 
 RADIATION_SUBENTRY_DATA = {
-    "data": {},
+    "data": {CONF_STATION_ID: RADIATION_STATION.station_id},
     "subentry_id": "radiation-subentry",
-    "subentry_type": "radiation_station",
-    "title": "Radiation",
-    "unique_id": "radiation",
+    "subentry_type": SUBENTRY_TYPE_RADIATION_STATION,
+    "title": "Kyiv radiation",
+    "unique_id": f"radiation:{RADIATION_STATION.station_id}",
 }

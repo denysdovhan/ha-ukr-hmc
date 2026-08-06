@@ -23,6 +23,8 @@ from .const import (
     QUERY_CITY,
     QUERY_LANGUAGE,
     QUERY_LOCATION,
+    RADIATION_DATA_PATH,
+    RADIATION_STATION_CATALOG_PATH,
     REQUEST_HEADERS,
     REQUEST_TIMEOUT,
     STATION_CATALOG_PATH,
@@ -34,6 +36,8 @@ from .models import (
     UkrHMCLocationForecast,
     UkrHMCLocationForecastRequest,
     UkrHMCLookups,
+    UkrHMCRadiationObservation,
+    UkrHMCRadiationStation,
     UkrHMCStation,
 )
 from .parsers import (
@@ -45,6 +49,8 @@ from .parsers import (
     parse_lookups,
     parse_night_station_ids,
     parse_observations,
+    parse_radiation_observations,
+    parse_radiation_station_catalog,
     parse_station_catalog,
 )
 
@@ -56,6 +62,7 @@ class UkrHMCClient:
         """Initialize the client with an injected HTTP session."""
         self._session = session
         self._stations: dict[int, UkrHMCStation] | None = None
+        self._radiation_stations: dict[int, UkrHMCRadiationStation] | None = None
         self._lookups: UkrHMCLookups | None = None
 
     async def _get_text(self, path: str) -> str:
@@ -106,6 +113,29 @@ class UkrHMCClient:
                 await self._get_text(STATION_CATALOG_PATH)
             )
         return self._stations
+
+    async def async_get_radiation_stations(
+        self,
+    ) -> dict[int, UkrHMCRadiationStation]:
+        """Return the physical radiation station catalog."""
+        if self._radiation_stations is None:
+            self._radiation_stations = parse_radiation_station_catalog(
+                await self._get_text(RADIATION_STATION_CATALOG_PATH)
+            )
+        return self._radiation_stations
+
+    async def async_get_radiation_data(
+        self,
+    ) -> tuple[
+        dict[int, UkrHMCRadiationStation],
+        dict[int, UkrHMCRadiationObservation],
+    ]:
+        """Return the radiation station catalog and current observations."""
+        stations, payload = await asyncio.gather(
+            self.async_get_radiation_stations(),
+            self._get_json(RADIATION_DATA_PATH),
+        )
+        return stations, parse_radiation_observations(payload)
 
     async def _async_get_lookups(self) -> UkrHMCLookups:
         """Return cached condition and wind lookup tables."""
@@ -176,6 +206,7 @@ class UkrHMCClient:
         | None = None,
         *,
         include_station_data: bool = True,
+        include_radiation_data: bool = False,
     ) -> UkrHMCData:
         """Fetch one complete provider snapshot."""
         location_requests = location_forecasts or {}
@@ -183,6 +214,8 @@ class UkrHMCClient:
         observations = {}
         forecasts = {}
         night_station_ids = frozenset()
+        radiation_stations = {}
+        radiation_observations = {}
         if include_station_data:
             (
                 stations,
@@ -200,6 +233,11 @@ class UkrHMCClient:
             observations = parse_observations(current, lookups)
             forecasts = parse_forecasts(forecast_payload, lookups)
             night_station_ids = parse_night_station_ids(day_night)
+        if include_radiation_data:
+            (
+                radiation_stations,
+                radiation_observations,
+            ) = await self.async_get_radiation_data()
         location_results = await asyncio.gather(
             *(
                 self._async_get_location_forecast(request)
@@ -214,4 +252,6 @@ class UkrHMCClient:
                 zip(location_requests, location_results, strict=True)
             ),
             night_station_ids=night_station_ids,
+            radiation_stations=radiation_stations,
+            radiation_observations=radiation_observations,
         )

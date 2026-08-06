@@ -11,6 +11,8 @@ from .models import (
     UkrHMCLocationForecastRequest,
     UkrHMCLookups,
     UkrHMCObservation,
+    UkrHMCRadiationObservation,
+    UkrHMCRadiationStation,
     UkrHMCStation,
     UkrHMCWind,
 )
@@ -28,6 +30,8 @@ __all__ = [
     "UkrHMCLocationForecastRequest",
     "UkrHMCLookups",
     "UkrHMCObservation",
+    "UkrHMCRadiationObservation",
+    "UkrHMCRadiationStation",
     "UkrHMCStation",
     "UkrHMCWind",
 ]

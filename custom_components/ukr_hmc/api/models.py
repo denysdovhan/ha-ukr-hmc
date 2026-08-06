@@ -52,6 +52,26 @@ class UkrHMCStation:
 
 
 @dataclass(frozen=True, slots=True)
+class UkrHMCRadiationStation:
+    """Physical radiation monitoring station."""
+
+    station_id: int
+    name: str
+    latitude: float
+    longitude: float
+    altitude: int
+
+
+@dataclass(frozen=True, slots=True)
+class UkrHMCRadiationObservation:
+    """Latest radiation observation for one station."""
+
+    observed_at: datetime
+    exposure_dose_rate: float
+    dose_rate: float
+
+
+@dataclass(frozen=True, slots=True)
 class UkrHMCLocationForecastRequest:
     """Location accepted by the provider's forecast endpoint."""
 
@@ -186,9 +206,11 @@ class UkrHMCData:
     forecasts: Mapping[int, tuple[UkrHMCForecastDay, ...]]
     location_forecasts: Mapping[str, UkrHMCLocationForecast]
     night_station_ids: frozenset[int]
+    radiation_stations: Mapping[int, UkrHMCRadiationStation]
+    radiation_observations: Mapping[int, UkrHMCRadiationObservation]
 
     @classmethod
-    def create(
+    def create(  # noqa: PLR0913
         cls,
         *,
         stations: dict[int, UkrHMCStation],
@@ -196,6 +218,8 @@ class UkrHMCData:
         forecasts: dict[int, tuple[UkrHMCForecastDay, ...]],
         location_forecasts: dict[str, UkrHMCLocationForecast],
         night_station_ids: frozenset[int],
+        radiation_stations: dict[int, UkrHMCRadiationStation],
+        radiation_observations: dict[int, UkrHMCRadiationObservation],
     ) -> UkrHMCData:
         """Create an immutable provider snapshot."""
         return cls(
@@ -204,4 +228,6 @@ class UkrHMCData:
             forecasts=MappingProxyType(dict(forecasts)),
             location_forecasts=MappingProxyType(dict(location_forecasts)),
             night_station_ids=night_station_ids,
+            radiation_stations=MappingProxyType(dict(radiation_stations)),
+            radiation_observations=MappingProxyType(dict(radiation_observations)),
         )

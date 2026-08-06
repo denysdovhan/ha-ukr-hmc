@@ -4,19 +4,17 @@
     "step": {
       "user": {
         "title": "Connect to UkrHMC",
-        "description": "Choose a weather station or a weather location.",
+        "description": "Choose a weather station, weather location, or radiation monitoring station.",
         "menu_options": {
           "weather_station": "Weather station",
-          "weather_location": "Weather location"
+          "weather_location": "Weather location",
+          "radiation_station": "Radiation monitoring station"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to the Ukrainian Hydrometeorological Center.",
       "no_stations": "The Ukrainian Hydrometeorological Center returned no stations."
-    },
-    "abort": {
-      "already_configured": "The Ukrainian Hydrometeorological Center is already configured."
     }
   },
   "config_subentries": {
@@ -74,12 +72,46 @@
         "user": "Add weather location"
       },
       "entry_type": "Weather location"
+    },
+    "radiation_station": {
+      "step": {
+        "user": {
+          "title": "Add radiation monitoring station",
+          "description": "Current radiation measurements from a monitoring station of the Ukrainian Hydrometeorological Center.",
+          "data": {
+            "name": "Name",
+            "station_id": "Radiation monitoring station"
+          },
+          "data_description": {
+            "name": "Name shown in Home Assistant.",
+            "station_id": "Station names are provided by the Ukrainian Hydrometeorological Center. Only stations with current data are shown."
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "Failed to connect to the Ukrainian Hydrometeorological Center.",
+        "invalid_station": "The selected station is no longer available.",
+        "no_stations": "The Ukrainian Hydrometeorological Center returned no radiation monitoring stations."
+      },
+      "abort": {
+        "already_configured": "This radiation monitoring station is already configured."
+      },
+      "initiate_flow": {
+        "user": "Add radiation monitoring station"
+      },
+      "entry_type": "Radiation monitoring station"
     }
   },
   "entity": {
     "sensor": {
       "condition": {
         "name": "Condition"
+      },
+      "exposure_dose_rate": {
+        "name": "Exposure dose rate"
+      },
+      "dose_rate": {
+        "name": "Dose rate"
       },
       "weather": {
         "name": "Weather"
