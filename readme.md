@@ -14,18 +14,21 @@
 > This community project is not affiliated with the Ukrainian
 > Hydrometeorological Center. Always follow official warnings and guidance.
 
-The integration creates a weather entity and sensors for the selected physical
-weather station. Choose a station from the list or provide a location to use
-the nearest station. Forecasts expose only values supplied by the provider.
+The integration creates a weather entity and sensors for either a selected
+physical station or a location on the map. Stations use physical observations;
+locations use forecast values for the selected point.
 
 ## Features
 
-- Native Home Assistant weather entity with daily and twice-daily forecasts.
-- Native sensors for condition text, temperature, humidity, pressure, wind
-  speed, wind direction, and observation time.
-- Multiple physical stations under one integration entry.
-- Station selection from the provider list or by nearest map location.
-- Shared provider updates every 30 minutes, regardless of station count.
+- Physical station mode with current observations plus direct daily and
+  twice-daily station forecasts.
+- Location mode with current conditions from the current forecast
+  hour, plus hourly and daily forecasts for the exact point.
+- Native sensors for canonical condition, provider weather text, temperature,
+  humidity, pressure, wind speed, wind direction, and data time.
+- Multiple weather stations and locations under one integration entry.
+- One shared coordinator updates provider data every 15 minutes; location
+  forecasts are requested only for configured map locations.
 
 The provider supplies temperature ranges and descriptive precipitation,
 cloudiness, and wind-range text that Home Assistant's native forecast schema
@@ -61,6 +64,18 @@ Add the integration through the Home Assistant UI:
 3. Search for **Ukrainian Hydrometeorological Center** and follow the setup.
 
 </details>
+
+When adding weather data, choose one of two types:
+
+- **Physical station** — select a UkrHMC station and receive its current
+  observation plus daily and twice-daily station forecasts.
+- **Location on map** — place a point on the map and receive current values
+  from the current forecast hour, plus hourly and daily forecasts for the exact
+  location. Physical-station observations are not used.
+
+Location daily forecasts follow the meteo.gov.ua presentation: the 03:00
+forecast supplies the low temperature, while the 15:00 forecast supplies the
+high temperature and condition. Days without both published hours are omitted.
 
 ## Removal
 

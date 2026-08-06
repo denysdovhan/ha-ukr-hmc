@@ -37,11 +37,13 @@ documentation.
 This repository implements the Home Assistant custom integration **Ukrainian
 Hydrometeorological Center** (`ukr_hmc`). It exposes observations and forecasts
 from [meteo.gov.ua](https://www.meteo.gov.ua/) for physical meteorological
-stations. Integration code lives in `custom_components/ukr_hmc`.
+stations and configured map locations. Integration code lives in
+`custom_components/ukr_hmc`.
 
-One integration config entry owns multiple station subentries. Each station can
-be selected explicitly from the provider catalog or resolved dynamically as the
-nearest station to a configured location.
+One integration config entry owns multiple typed subentries. Weather stations
+and exact forecast locations use separate subentry types. Keep other provider
+products, such as future radiation monitoring and hydrology posts, in sibling
+subentry and device types.
 
 ### Code structure
 
@@ -51,17 +53,17 @@ nearest station to a configured location.
   data models, and parsers. Keep it ready for extraction to a standalone package.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
-- `config_flow.py` - creates the single service entry and physical-station
-  subentries using nearest-location or explicit-list selection.
-- `const.py` - integration constants, station types, and the 30-minute update
-  interval.
-- `coordinator.py` - fetches one complete provider snapshot shared by every
-  station subentry.
+- `config_flow.py` - creates the single service entry and separate weather-station
+  and weather-location subentries.
+- `const.py` - integration constants, weather subentry types, and the 15-minute
+  update interval.
+- `coordinator.py` - fetches one global station snapshot plus direct location
+  forecasts for configured map locations.
 - `data.py` - `UkrHMCRuntimeData` and the typed `UkrHMCConfigEntry` alias.
-- `entity.py` - shared station resolution, availability, and device metadata.
-- `helpers.py` - nearest-station and station-ID resolution helpers.
+- `entity.py` - shared weather data access, availability, and device metadata.
 - `sensor.py` - current-condition sensor descriptions and entities.
-- `weather.py` - current weather plus native daily and twice-daily forecasts.
+- `weather.py` - current weather plus forecast modes supported by each location
+  type.
 - `translations/` - English and Ukrainian UI strings.
 - `tests/` - focused API, condition, config-flow, coordinator, entity, and setup
   coverage.
@@ -88,38 +90,53 @@ nearest station to a configured location.
 - Use one shared `UkrHMCClient` and one `UkrHMCCoordinator` per config entry.
 - Store both in `entry.runtime_data`; do not introduce globals or singleton state.
 - The coordinator downloads the global station, observation, forecast, lookup,
-  and day/night data once every 30 minutes. Do not add per-station coordinators or
-  duplicate global requests.
+  and day/night data once every 15 minutes when weather-station subentries need
+  it, plus one direct location forecast for each weather-location subentry. Do not
+  add per-location coordinators or duplicate global requests.
 - Entities read cached coordinator data only. Never perform I/O in entity
   properties or forecast callbacks.
 - Convert provider failures to the appropriate Home Assistant coordinator or
   config-flow errors while preserving useful exception context.
 
-### Station subentries
+### Weather subentries
 
 - Catalog records are physical meteorological stations, not cities.
-- Static subentries store a provider station ID. Dynamic subentries store a
-  location and resolve the nearest current catalog station after each refresh.
+- Use `weather_station` for physical stations and `weather_location` for exact
+  point forecasts. Do not store a second weather-source discriminator.
+- Future provider products should use explicit sibling types such as
+  `radiation_station` and `hydrology_post` when implemented. Weather platforms
+  must ignore other subentry types.
+- Weather-station subentries store a selected provider station ID.
+- Weather-location subentries store only their label, latitude, and longitude.
+  Do not resolve or store a physical station for map locations.
 - Add entities with `config_subentry_id=subentry.subentry_id`.
 - Weather unique IDs use the subentry ID. Sensor unique IDs use
   `{subentry_id}-{sensor_key}`.
-- Reject duplicate station selections using stable subentry unique IDs.
+- Reject duplicate weather resources using stable subentry unique IDs.
 - The explicit station picker is intentionally a strict single-selection
   dropdown. Do not enable multiple or custom values merely to make it searchable.
 
 ### Weather and sensor behavior
 
-- Expose one weather entity and current-condition sensors for condition,
-  temperature, humidity, pressure, wind speed, wind direction, and observation
-  time per station.
-- Keep the condition sensor's original Ukrainian provider text. Map conditions to
-  Home Assistant canonical values only for the weather entity and forecasts.
+- Expose one weather entity and current-condition sensors for canonical
+  condition, provider weather text, temperature, humidity, pressure, wind speed,
+  wind direction, and data time per location.
+- Station current values come from physical observations. Location current
+  values come from the exact current-hour `fulldata` record for the point.
+- Keep `condition` sensor states canonical for Home Assistant. Keep direct
+  provider text in the separate `weather` sensor; do not invent a localized
+  location description when UkrHMC returns English text.
 - Expose only forecast values directly supplied by UkrHMC. Do not calculate
   averages, infer missing values, or publish raw unsupported fields as custom
   entity attributes.
-- Daily forecasts use direct day/night temperatures. Twice-daily forecasts use
-  provider sunrise/sunset periods. A single wind speed may be exposed; a textual
-  speed range must remain unset rather than being averaged.
+- Station sources expose the provider's direct daily and twice-daily station
+  forecasts. A single wind speed may be exposed; a textual speed range must
+  remain unset rather than being averaged.
+- Location sources expose direct hourly values plus daily forecasts matching
+  meteo.gov.ua: 03:00 supplies the low/night value and 15:00 supplies the
+  high/day value and condition. Omit a day unless both records are published.
+- Do not use physical-station observations as location current values or infer
+  a station from latitude and longitude.
 - Keep temperature ranges, textual cloudiness and precipitation, wind ranges,
   sunrise, sunset, and other unsupported fields in API models for future use.
 - The wind-direction sensor exposes degrees with the native wind-direction device
@@ -131,6 +148,9 @@ Current supported endpoints are:
 
 - `/_/m/current.js` - latest observations for all stations.
 - `/_/m/prognoz.js` - forecasts for all stations.
+- `/fmi.json?action=getCityWeather` - direct location forecast values using a
+  non-empty label and `latlon`; `dataDetailed` supplies upcoming hourly values,
+  while `fulldata` supplies the current-hour record and daily-card records.
 - `/_/_e5m.json` - provider day/night flags.
 - `/ua/_meteo-stations.js` - region and physical-station catalog.
 - `/ua/_meteo-icons.js` and `/ua/_meteo-winds.js` - condition and wind lookups.
@@ -148,8 +168,7 @@ and times.
 ## Configuration and translations
 
 - Keep config-entry setup in the UI; do not add YAML configuration.
-- Preserve both station-selection paths: nearest map location and explicit
-  station list.
+- Preserve both weather subentry types: physical station and map location.
 - Edit `translations/en.json` and `translations/uk.json` together when UI keys
   change. Translate values only and keep JSON keys aligned.
 - Use the full official organization name in integration titles, manifest

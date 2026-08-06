@@ -25,8 +25,9 @@ API code ready for extraction into a standalone package.
 ## Questions & Answers
 
 - Are catalog entries cities or physical stations? They are physical
-  meteorological stations with IDs, coordinates, altitude, and observations.
-  Support both nearest-station and explicit-list selection like LUN Misto Air.
+  meteorological stations with IDs, latitude, longitude, altitude, and
+  observations. Support both nearest-station and explicit-list selection like
+  LUN Misto Air.
 - Which forecasts should be exposed? Use the forecast periods and values
   provided by UkrHMC. Do not calculate or infer weather values.
 - Which current-condition sensors should be created? Follow the OpenWeatherMap
@@ -37,6 +38,13 @@ API code ready for extraction into a standalone package.
   ranges, textual precipitation/cloudiness, wind-speed ranges, or sunrise and
   sunset. Keep those values in the API model without adding raw entity
   attributes.
+- Which temperature represents current weather? Keep using the latest physical
+  station observation from `/_/m/current.js`. City-model temperatures are
+  forecasts and must not replace the current observation.
+- How should physical stations use the city-based hourly endpoint? Resolve an
+  exact-name Ukrainian locality from the provider search results and choose the
+  closest match by distance. If no match is available, omit hourly forecasts
+  for that station without affecting observations or daily forecasts.
 
 ## Decision
 
@@ -51,8 +59,14 @@ API code ready for extraction into a standalone package.
 - Expose one weather entity plus current-condition sensors for each station.
 - Expose daily and twice-daily native forecasts using only directly compatible
   provider values. Keep unsupported source fields in the API model.
+- Expose the provider's city-model hourly records as native hourly forecasts.
+  Keep the station-to-locality resolution and payload parsing inside the
+  extractable API package.
 - Map provider condition codes to Home Assistant's canonical weather conditions;
   this is representation mapping, not weather inference.
+- Poll every 15 minutes. Station observations are published in three-hour
+  periods, while a shorter bounded interval limits the delay after a new period
+  appears and refreshes subscribed hourly forecasts without aggressive polling.
 
 ## Tradeoffs & Alternatives
 
@@ -83,6 +97,9 @@ API code ready for extraction into a standalone package.
 - [x] Local light/dark brand icons and logos use official UkrHMC artwork.
 - [x] Review feedback uses descriptive provider-field constants, native wind
       direction metadata, official naming, and custom-integration translations.
+- [x] Current weather continues to use `current.js` observations.
+- [x] Hourly forecasts expose direct provider city-model values when available.
+- [x] Coordinator polling uses the documented 15-minute interval.
 
 ## Implementation Notes
 
@@ -127,3 +144,13 @@ API code ready for extraction into a standalone package.
   `ugmc-map-wm-ua.svg` composition, cropped above its `meteo.gov.ua` line.
   Preserved transparent light/dark and normal/hDPI variants; icons are
   unchanged.
+- 2026-07-31: Live investigation confirmed Chernivtsi station `33658` reported
+  31.4 C at 18:00 through `current.js`, while the city endpoint separately
+  forecast 25 C at 22:00. Began adding optional native hourly forecasts without
+  relabeling model data as a current observation.
+- 2026-07-31: Added exact-name, nearest-location locality resolution and
+  native hourly forecasts from `fmi.json`. Live validation returned 221 hourly
+  records for Chernivtsi while the weather entity retained the 31.4 C station
+  observation from `current.js`; Ruff and all 47 tests passed. The restarted
+  Home Assistant instance loaded UkrHMC successfully with a 15-minute polling
+  interval; browser UI inspection stopped at the existing login screen.
