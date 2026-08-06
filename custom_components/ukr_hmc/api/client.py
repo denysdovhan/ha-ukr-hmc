@@ -17,6 +17,8 @@ from .const import (
     CURRENT_PATH,
     DAY_NIGHT_PATH,
     FORECAST_PATH,
+    HYDROLOGY_DATA_PATH,
+    HYDROLOGY_POST_CATALOG_PATH,
     ICON_LOOKUP_PATH,
     LOCATION_MATCH_TOLERANCE,
     QUERY_ACTION,
@@ -33,6 +35,8 @@ from .const import (
 from .errors import UkrHMCConnectionError, UkrHMCDataError
 from .models import (
     UkrHMCData,
+    UkrHMCHydrologyObservation,
+    UkrHMCHydrologyPost,
     UkrHMCLocationForecast,
     UkrHMCLocationForecastRequest,
     UkrHMCLookups,
@@ -44,6 +48,8 @@ from .parsers import (
     parse_current_location_forecast,
     parse_forecasts,
     parse_hourly_forecasts,
+    parse_hydrology_observations,
+    parse_hydrology_post_catalog,
     parse_location_daily_forecasts,
     parse_location_forecast_point,
     parse_lookups,
@@ -63,6 +69,7 @@ class UkrHMCClient:
         self._session = session
         self._stations: dict[int, UkrHMCStation] | None = None
         self._radiation_stations: dict[int, UkrHMCRadiationStation] | None = None
+        self._hydrology_posts: dict[int, UkrHMCHydrologyPost] | None = None
         self._lookups: UkrHMCLookups | None = None
 
     async def _get_text(self, path: str) -> str:
@@ -137,6 +144,27 @@ class UkrHMCClient:
         )
         return stations, parse_radiation_observations(payload)
 
+    async def async_get_hydrology_posts(self) -> dict[int, UkrHMCHydrologyPost]:
+        """Return the physical hydrology post catalog."""
+        if self._hydrology_posts is None:
+            self._hydrology_posts = parse_hydrology_post_catalog(
+                await self._get_text(HYDROLOGY_POST_CATALOG_PATH)
+            )
+        return self._hydrology_posts
+
+    async def async_get_hydrology_data(
+        self,
+    ) -> tuple[
+        dict[int, UkrHMCHydrologyPost],
+        dict[int, UkrHMCHydrologyObservation],
+    ]:
+        """Return the hydrology post catalog and current observations."""
+        posts, payload = await asyncio.gather(
+            self.async_get_hydrology_posts(),
+            self._get_json(HYDROLOGY_DATA_PATH),
+        )
+        return posts, parse_hydrology_observations(payload)
+
     async def _async_get_lookups(self) -> UkrHMCLookups:
         """Return cached condition and wind lookup tables."""
         if self._lookups is None:
@@ -207,6 +235,7 @@ class UkrHMCClient:
         *,
         include_station_data: bool = True,
         include_radiation_data: bool = False,
+        include_hydrology_data: bool = False,
     ) -> UkrHMCData:
         """Fetch one complete provider snapshot."""
         location_requests = location_forecasts or {}
@@ -216,6 +245,8 @@ class UkrHMCClient:
         night_station_ids = frozenset()
         radiation_stations = {}
         radiation_observations = {}
+        hydrology_posts = {}
+        hydrology_observations = {}
         if include_station_data:
             (
                 stations,
@@ -238,6 +269,11 @@ class UkrHMCClient:
                 radiation_stations,
                 radiation_observations,
             ) = await self.async_get_radiation_data()
+        if include_hydrology_data:
+            (
+                hydrology_posts,
+                hydrology_observations,
+            ) = await self.async_get_hydrology_data()
         location_results = await asyncio.gather(
             *(
                 self._async_get_location_forecast(request)
@@ -254,4 +290,6 @@ class UkrHMCClient:
             night_station_ids=night_station_ids,
             radiation_stations=radiation_stations,
             radiation_observations=radiation_observations,
+            hydrology_posts=hydrology_posts,
+            hydrology_observations=hydrology_observations,
         )

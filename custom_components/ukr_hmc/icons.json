@@ -26,6 +26,22 @@
       "dose_rate": {
         "default": "mdi:radioactive"
       },
+      "hydrological_situation": {
+        "default": "mdi:waves"
+      },
+      "water_level": {
+        "default": "mdi:waves"
+      },
+      "water_level_altitude": {
+        "default": "mdi:altimeter"
+      },
+      "water_level_change": {
+        "default": "mdi:wave-arrow-down",
+        "range": {
+          "0": "mdi:waves",
+          "0.01": "mdi:wave-arrow-up"
+        }
+      },
       "weather": {
         "default": "mdi:weather-partly-cloudy"
       },

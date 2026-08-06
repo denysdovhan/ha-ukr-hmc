@@ -15,6 +15,7 @@ from custom_components.ukr_hmc.data import UkrHMCRuntimeData
 
 from .fixtures import (
     DATA,
+    HYDROLOGY_SUBENTRY_DATA,
     LOCATION_SUBENTRY_DATA,
     RADIATION_SUBENTRY_DATA,
     STATION_SUBENTRY_DATA,
@@ -49,6 +50,7 @@ async def test_setup_creates_weather_and_current_sensors(
             STATION_SUBENTRY_DATA,
             LOCATION_SUBENTRY_DATA,
             RADIATION_SUBENTRY_DATA,
+            HYDROLOGY_SUBENTRY_DATA,
         ],
     )
     entry.add_to_hass(hass)
@@ -91,6 +93,24 @@ async def test_setup_creates_weather_and_current_sensors(
         "radiation-subentry-dose_rate",
     )
     _entity_id(registry, "radiation-subentry-observation_time")
+    hydrology_water_level_entity_id = _entity_id(
+        registry,
+        "hydrology-subentry-water_level",
+    )
+    hydrology_water_level_change_entity_id = _entity_id(
+        registry,
+        "hydrology-subentry-water_level_change",
+    )
+    hydrology_water_temperature_entity_id = _entity_id(
+        registry,
+        "hydrology-subentry-water_temperature",
+    )
+    hydrology_situation_entity_id = _entity_id(
+        registry,
+        "hydrology-subentry-hydrological_situation",
+    )
+    _entity_id(registry, "hydrology-subentry-water_level_altitude")
+    _entity_id(registry, "hydrology-subentry-observation_time")
     assert (
         registry.async_get_entity_id(
             "sensor",
@@ -108,6 +128,7 @@ async def test_setup_creates_weather_and_current_sensors(
         is None
     )
     assert registry.async_get_entity_id("weather", DOMAIN, "radiation-subentry") is None
+    assert registry.async_get_entity_id("weather", DOMAIN, "hydrology-subentry") is None
     assert (
         registry.async_get_entity_id("sensor", DOMAIN, "radiation-subentry-dose_level")
         is None
@@ -126,5 +147,11 @@ async def test_setup_creates_weather_and_current_sensors(
     assert hass.states.get(location_wind_direction_entity_id).state == "315.0"
     assert hass.states.get(radiation_exposure_dose_rate_entity_id).state == "11"
     assert hass.states.get(radiation_dose_rate_entity_id).state == "96"
+    assert hass.states.get(hydrology_water_level_entity_id).state == "444.0"
+    assert hass.states.get(hydrology_water_level_change_entity_id).state == "-1.0"
+    assert hass.states.get(hydrology_water_temperature_entity_id).state == "25.0"
+    assert hass.states.get(hydrology_situation_entity_id).state == (
+        "floodplain_flooding"
+    )
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert entry.state is ConfigEntryState.NOT_LOADED

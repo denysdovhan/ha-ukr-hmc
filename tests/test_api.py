@@ -16,6 +16,8 @@ from custom_components.ukr_hmc.api.const import (
     CURRENT_PATH,
     DAY_NIGHT_PATH,
     FORECAST_PATH,
+    HYDROLOGY_DATA_PATH,
+    HYDROLOGY_POST_CATALOG_PATH,
     QUERY_ACTION,
     QUERY_CITY,
     QUERY_LANGUAGE,
@@ -28,6 +30,8 @@ from custom_components.ukr_hmc.api.parsers import (
     parse_current_location_forecast,
     parse_forecasts,
     parse_hourly_forecasts,
+    parse_hydrology_observations,
+    parse_hydrology_post_catalog,
     parse_location_daily_forecasts,
     parse_lookups,
     parse_night_station_ids,
@@ -39,6 +43,8 @@ from custom_components.ukr_hmc.api.parsers import (
 
 from .fixtures import (
     DATA,
+    HYDROLOGY_OBSERVATION,
+    HYDROLOGY_POST,
     LOCATION_FORECAST_REQUEST,
     RADIATION_OBSERVATION,
     RADIATION_STATION,
@@ -61,6 +67,21 @@ RADIATION_PAYLOAD = {
         "CH": "12:00:00",
         "VR": 11,
         "VZ": 96,
+    },
+}
+HYDROLOGY_POST_SCRIPT = (
+    'const HYDRO_POSTS = {"80986": {"R": "Дніпро", "P": "Київ", '
+    '"X": 50.442147, "Y": 30.569539}};'
+)
+HYDROLOGY_PAYLOAD = {
+    "0": "06.08.2026",
+    "80986": {
+        "PD": "06.08.2026",
+        "FR": 444,
+        "FR_BS": 91.44,
+        "C_FR": -0.01,
+        "TW": 25,
+        "L": 1,
     },
 }
 
@@ -107,6 +128,53 @@ async def test_client_gets_radiation_catalog_and_observations() -> None:
     assert observations[RADIATION_STATION.station_id] == RADIATION_OBSERVATION
     client._get_text.assert_awaited_once_with(RADIATION_STATION_CATALOG_PATH)
     client._get_json.assert_awaited_once_with(RADIATION_DATA_PATH)
+
+
+def test_parse_hydrology_catalog_and_observations() -> None:
+    posts = parse_hydrology_post_catalog(HYDROLOGY_POST_SCRIPT)
+    observations = parse_hydrology_observations(
+        {
+            **HYDROLOGY_PAYLOAD,
+            "79043": {
+                "PD": "06.08.2026",
+                "FR": 0,
+                "FR_BS": 0,
+                "C_FR": 0,
+                "TW": 0,
+                "L": 0,
+            },
+        }
+    )
+
+    assert posts == {HYDROLOGY_POST.post_id: HYDROLOGY_POST}
+    assert observations == {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION}
+
+    zero_temperature = parse_hydrology_observations(
+        {
+            "79043": {
+                "PD": "06.08.2026",
+                "FR": -5,
+                "FR_BS": 1,
+                "C_FR": 0,
+                "TW": 0,
+                "L": 0,
+            }
+        }
+    )
+    assert zero_temperature[79043].water_temperature == 0
+
+
+async def test_client_gets_hydrology_catalog_and_observations() -> None:
+    client = UkrHMCClient(Mock())
+    client._get_text = AsyncMock(return_value=HYDROLOGY_POST_SCRIPT)
+    client._get_json = AsyncMock(return_value=HYDROLOGY_PAYLOAD)
+
+    posts, observations = await client.async_get_hydrology_data()
+
+    assert posts[HYDROLOGY_POST.post_id] == HYDROLOGY_POST
+    assert observations[HYDROLOGY_POST.post_id] == HYDROLOGY_OBSERVATION
+    client._get_text.assert_awaited_once_with(HYDROLOGY_POST_CATALOG_PATH)
+    client._get_json.assert_awaited_once_with(HYDROLOGY_DATA_PATH)
 
 
 def test_parse_observations_and_lookups() -> None:
@@ -300,6 +368,9 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     client.async_get_radiation_data = AsyncMock(
         side_effect=AssertionError("radiation data must not be fetched")
     )
+    client.async_get_hydrology_data = AsyncMock(
+        side_effect=AssertionError("hydrology data must not be fetched")
+    )
 
     async def get_json(path, params=None):
         assert path == CITY_API_PATH
@@ -319,6 +390,8 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     assert snapshot.night_station_ids == set()
     assert snapshot.radiation_stations == {}
     assert snapshot.radiation_observations == {}
+    assert snapshot.hydrology_posts == {}
+    assert snapshot.hydrology_observations == {}
     assert (
         snapshot.location_forecasts["location-subentry"].hourly_forecasts[0].temperature
         == 20
@@ -332,6 +405,7 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     client.async_get_stations.assert_not_awaited()
     client._async_get_lookups.assert_not_awaited()
     client.async_get_radiation_data.assert_not_awaited()
+    client.async_get_hydrology_data.assert_not_awaited()
 
 
 async def test_data_snapshot_can_include_only_radiation_data() -> None:
@@ -353,6 +427,26 @@ async def test_data_snapshot_can_include_only_radiation_data() -> None:
     )
     assert snapshot.radiation_observations[RADIATION_STATION.station_id] == (
         RADIATION_OBSERVATION
+    )
+
+
+async def test_data_snapshot_can_include_only_hydrology_data() -> None:
+    client = UkrHMCClient(Mock())
+    client.async_get_hydrology_data = AsyncMock(
+        return_value=(
+            {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
+            {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+        )
+    )
+
+    snapshot = await client.async_get_data(
+        include_station_data=False,
+        include_hydrology_data=True,
+    )
+
+    assert snapshot.hydrology_posts[HYDROLOGY_POST.post_id] == HYDROLOGY_POST
+    assert snapshot.hydrology_observations[HYDROLOGY_POST.post_id] == (
+        HYDROLOGY_OBSERVATION
     )
 
 
@@ -470,6 +564,8 @@ def test_parse_night_station_ids() -> None:
         (parse_station_catalog, ("invalid",)),
         (parse_radiation_station_catalog, ("invalid",)),
         (parse_radiation_observations, ({"33345": {}},)),
+        (parse_hydrology_post_catalog, ("invalid",)),
+        (parse_hydrology_observations, ({"80986": {}},)),
         (parse_lookups, ("const X = [];", WIND_SCRIPT)),
         (parse_lookups, ("const METEO_ICONS_TITLES = {};", WIND_SCRIPT)),
         (parse_location_daily_forecasts, ({},)),
@@ -491,6 +587,8 @@ def test_data_snapshot_copies_input_mappings() -> None:
         night_station_ids=DATA.night_station_ids,
         radiation_stations=dict(DATA.radiation_stations),
         radiation_observations=dict(DATA.radiation_observations),
+        hydrology_posts=dict(DATA.hydrology_posts),
+        hydrology_observations=dict(DATA.hydrology_observations),
     )
 
     stations.clear()

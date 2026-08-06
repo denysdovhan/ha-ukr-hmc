@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     DEGREE,
     PERCENTAGE,
+    UnitOfLength,
     UnitOfPressure,
     UnitOfSpeed,
     UnitOfTemperature,
@@ -24,8 +25,10 @@ from .condition import hmc_condition_to_ha
 from .const import (
     CONF_STATION_ID,
     DOMAIN,
+    HYDROLOGY_CONFIGURATION_URL,
     MANUFACTURER,
     RADIATION_CONFIGURATION_URL,
+    SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
@@ -43,6 +46,7 @@ if TYPE_CHECKING:
 
     from .api import (
         UkrHMCHourlyForecast,
+        UkrHMCHydrologyObservation,
         UkrHMCObservation,
         UkrHMCRadiationObservation,
     )
@@ -63,6 +67,13 @@ class UkrHMCRadiationSensorDescription(SensorEntityDescription):
     """Describe a current radiation sensor."""
 
     value_fn: Callable[[UkrHMCRadiationObservation], StateType | datetime]
+
+
+@dataclass(frozen=True, kw_only=True)
+class UkrHMCHydrologySensorDescription(SensorEntityDescription):
+    """Describe a current hydrology sensor."""
+
+    value_fn: Callable[[UkrHMCHydrologyObservation], StateType | datetime]
 
 
 CONDITION_SENSOR = UkrHMCSensorDescription(
@@ -192,6 +203,72 @@ RADIATION_SENSORS: tuple[UkrHMCRadiationSensorDescription, ...] = (
     ),
 )
 
+HYDROLOGY_LEVEL_STATES = (
+    "calm",
+    "floodplain_flooding",
+    "dangerous_high",
+    "extreme_high",
+    "dangerous_low",
+)
+
+
+def _hydrological_situation(observation: UkrHMCHydrologyObservation) -> str | None:
+    """Return the provider's stable map-level state."""
+    if 0 <= observation.level_class < len(HYDROLOGY_LEVEL_STATES):
+        return HYDROLOGY_LEVEL_STATES[observation.level_class]
+    return None
+
+
+HYDROLOGY_SENSORS: tuple[UkrHMCHydrologySensorDescription, ...] = (
+    UkrHMCHydrologySensorDescription(
+        key="water_level",
+        translation_key="water_level",
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        suggested_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda observation: observation.water_level,
+    ),
+    UkrHMCHydrologySensorDescription(
+        key="water_level_altitude",
+        translation_key="water_level_altitude",
+        native_unit_of_measurement=UnitOfLength.METERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda observation: observation.water_level_altitude,
+    ),
+    UkrHMCHydrologySensorDescription(
+        key="water_level_change",
+        translation_key="water_level_change",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.METERS,
+        suggested_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        suggested_display_precision=0,
+        value_fn=lambda observation: observation.water_level_change,
+    ),
+    UkrHMCHydrologySensorDescription(
+        key="water_temperature",
+        translation_key="water_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda observation: observation.water_temperature,
+    ),
+    UkrHMCHydrologySensorDescription(
+        key="hydrological_situation",
+        translation_key="hydrological_situation",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(HYDROLOGY_LEVEL_STATES),
+        value_fn=_hydrological_situation,
+    ),
+    UkrHMCHydrologySensorDescription(
+        key="observation_time",
+        translation_key="observation_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda observation: observation.observed_at,
+    ),
+)
+
 
 class UkrHMCSensor(UkrHMCEntity, SensorEntity):
     """Represent one current weather value."""
@@ -278,10 +355,64 @@ class UkrHMCRadiationSensor(UkrHMCEntity, SensorEntity):
         )
 
 
+class UkrHMCHydrologySensor(UkrHMCEntity, SensorEntity):
+    """Represent one current hydrology value."""
+
+    entity_description: UkrHMCHydrologySensorDescription
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+        description: UkrHMCHydrologySensorDescription,
+    ) -> None:
+        """Initialize a hydrology sensor."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = description
+        self._post_id = int(subentry.data[CONF_STATION_ID])
+        self._attr_unique_id = f"{subentry.subentry_id}-{description.key}"
+
+    @property
+    def hydrology_observation(self) -> UkrHMCHydrologyObservation | None:
+        """Return the latest hydrology observation."""
+        return self.coordinator.data.hydrology_observations.get(self._post_id)
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether current hydrology data is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.hydrology_observation is not None
+        )
+
+    @property
+    @override
+    def native_value(self) -> StateType | datetime | None:
+        """Return the current provider value."""
+        if (observation := self.hydrology_observation) is None:
+            return None
+        return self.entity_description.value_fn(observation)
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        """Return service device information for this hydrology post."""
+        return DeviceInfo(
+            configuration_url=HYDROLOGY_CONFIGURATION_URL,
+            entry_type=DeviceEntryType.SERVICE,
+            identifiers={(DOMAIN, self._subentry.subentry_id)},
+            manufacturer=MANUFACTURER,
+            model=f"UkrHMC Hydrology Post {self._post_id}",
+            name=self._subentry.title,
+        )
+
+
 SENSORS_BY_SUBENTRY_TYPE = {
     SUBENTRY_TYPE_WEATHER_STATION: (STATION_SENSORS, UkrHMCSensor),
     SUBENTRY_TYPE_WEATHER_LOCATION: (LOCATION_SENSORS, UkrHMCSensor),
     SUBENTRY_TYPE_RADIATION_STATION: (RADIATION_SENSORS, UkrHMCRadiationSensor),
+    SUBENTRY_TYPE_HYDROLOGY_POST: (HYDROLOGY_SENSORS, UkrHMCHydrologySensor),
 }
 
 

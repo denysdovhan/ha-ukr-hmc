@@ -48,6 +48,18 @@ from .const import (
     HOURLY_WIND_DIRECTION_KEY,
     HOURLY_WIND_GUST_KEY,
     HOURLY_WIND_SPEED_KEY,
+    HYDROLOGY_DATE_KEY,
+    HYDROLOGY_LEVEL_CLASS_KEY,
+    HYDROLOGY_OBSERVATION_HOUR,
+    HYDROLOGY_POST_LATITUDE_KEY,
+    HYDROLOGY_POST_LONGITUDE_KEY,
+    HYDROLOGY_POST_NAME_KEY,
+    HYDROLOGY_POST_RIVER_KEY,
+    HYDROLOGY_POSTS_VARIABLE,
+    HYDROLOGY_WATER_LEVEL_ALTITUDE_KEY,
+    HYDROLOGY_WATER_LEVEL_CHANGE_KEY,
+    HYDROLOGY_WATER_LEVEL_KEY,
+    HYDROLOGY_WATER_TEMPERATURE_KEY,
     LOCATION_DAY_FORECAST_HOUR,
     LOCATION_FORECAST_RECORDS_KEY,
     LOCATION_NIGHT_FORECAST_HOUR,
@@ -95,6 +107,8 @@ from .errors import UkrHMCDataError
 from .models import (
     UkrHMCForecastDay,
     UkrHMCHourlyForecast,
+    UkrHMCHydrologyObservation,
+    UkrHMCHydrologyPost,
     UkrHMCLocationForecastDay,
     UkrHMCLookups,
     UkrHMCObservation,
@@ -277,6 +291,62 @@ def parse_radiation_observations(
             )
     except (KeyError, TypeError, ValueError) as exc:
         msg = "Invalid radiation observation data"
+        raise UkrHMCDataError(msg) from exc
+    return observations
+
+
+def parse_hydrology_post_catalog(script: str) -> dict[int, UkrHMCHydrologyPost]:
+    """Parse physical hydrology posts from provider JavaScript."""
+    records = _parse_js_assignment(script, HYDROLOGY_POSTS_VARIABLE)
+    if not isinstance(records, Mapping):
+        msg = "Invalid hydrology post catalog"
+        raise UkrHMCDataError(msg)
+
+    try:
+        return {
+            int(post_id): UkrHMCHydrologyPost(
+                post_id=int(post_id),
+                river=str(record[HYDROLOGY_POST_RIVER_KEY]),
+                name=str(record[HYDROLOGY_POST_NAME_KEY]),
+                latitude=float(record[HYDROLOGY_POST_LATITUDE_KEY]),
+                longitude=float(record[HYDROLOGY_POST_LONGITUDE_KEY]),
+            )
+            for post_id, record in records.items()
+            if isinstance(record, Mapping)
+        }
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid hydrology post catalog data"
+        raise UkrHMCDataError(msg) from exc
+
+
+def parse_hydrology_observations(
+    payload: Mapping[str, Any],
+) -> dict[int, UkrHMCHydrologyObservation]:
+    """Parse current daily hydrology observations."""
+    observations: dict[int, UkrHMCHydrologyObservation] = {}
+    try:
+        for post_id, record in payload.items():
+            if post_id == "0" or not isinstance(record, Mapping):
+                continue
+            water_level_altitude = float(record[HYDROLOGY_WATER_LEVEL_ALTITUDE_KEY])
+            if water_level_altitude == 0:
+                continue
+            observations[int(post_id)] = UkrHMCHydrologyObservation(
+                observed_at=datetime.strptime(
+                    str(record[HYDROLOGY_DATE_KEY]),
+                    "%d.%m.%Y",
+                ).replace(
+                    hour=HYDROLOGY_OBSERVATION_HOUR,
+                    tzinfo=UKRAINE_TIME_ZONE,
+                ),
+                water_level=float(record[HYDROLOGY_WATER_LEVEL_KEY]),
+                water_level_altitude=water_level_altitude,
+                water_level_change=float(record[HYDROLOGY_WATER_LEVEL_CHANGE_KEY]),
+                water_temperature=float(record[HYDROLOGY_WATER_TEMPERATURE_KEY]),
+                level_class=int(record[HYDROLOGY_LEVEL_CLASS_KEY]),
+            )
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid hydrology observation data"
         raise UkrHMCDataError(msg) from exc
     return observations
 
