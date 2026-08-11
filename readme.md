@@ -99,13 +99,13 @@ The difference is in forecasts:
 
 You can monitor radiation levels by using a physical radiation monitoring station.
 
-![Radiation Monitoring Station](./media/radiation.png)
+<img src="./media/radiation.png" alt="Radiation Monitoring Station" width="500">
 
 ### Hydrology
 
 You can monitor hydrological in Ukrainian rivers by using a physical hydrology post: water level, water temperature, conditions, etc.
 
-![Hydrology Post](./media/hydrology.png)
+<img src="./media/hydrology.png" alt="Hydrology Post" width="500">
 
 ## Removal
 
