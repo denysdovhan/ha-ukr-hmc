@@ -1,5 +1,7 @@
 [![SWUbanner](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua/)
 
+<br>
+
 ![Ukrainian Hydrometeorological Center Logo](./custom_components/ukr_hmc/brand/logo@2x.png#gh-light-mode-only)
 ![Ukrainian Hydrometeorological Center Logo](./custom_components/ukr_hmc/brand/dark_logo@2x.png#gh-dark-mode-only)
 
@@ -77,10 +79,6 @@ This integration allows creating these entities:
 | Weather location             | Forecast conditions for the selected map point; physical station measurements are not used     | Hourly and daily    |
 | Radiation monitoring station | Direct µR/h and nSv/h readings with observation time                                           | —                   |
 | Hydrology post               | Daily water measurements and the provider's hydrological situation                             | —                   |
-
-For weather locations, the current entity uses the provider's record for the current hour. The daily forecast follows the meteo.gov.ua presentation: 03:00 supplies the low temperature, while 15:00 supplies the high temperature and condition. Incomplete days are omitted.
-
-Radiation readings and hydrological situations are shown as published. The integration does not classify safety, derive warnings, or replace official guidance.
 
 ### Weather
 
