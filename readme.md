@@ -3,6 +3,8 @@
 ![Ukrainian Hydrometeorological Center Logo](./custom_components/ukr_hmc/brand/logo@2x.png#gh-light-mode-only)
 ![Ukrainian Hydrometeorological Center Logo](./custom_components/ukr_hmc/brand/dark_logo@2x.png#gh-dark-mode-only)
 
+<br>
+
 # 🌦️ Ukrainian Hydrometeorological Center for Home Assistant
 
 [![GitHub Release][gh-release-image]][gh-release-url]
@@ -15,32 +17,12 @@
 [**English**](./readme.md) | [Українською](./readme.uk.md)
 
 > [!NOTE]
-> An integration for weather, radiation, and hydrology data from the
-> [Ukrainian Hydrometeorological Center][ukr-hmc].
+> An integration for weather, radiation, and hydrology data from the [Ukrainian Hydrometeorological Center][ukr-hmc].
 
 > [!IMPORTANT]
-> This is an independent community project and is not affiliated with the
-> Ukrainian Hydrometeorological Center. Data may differ from the official
-> website. Always follow official warnings and guidance.
+> This is an independent community project and is not affiliated with the Ukrainian Hydrometeorological Center.
 
-This integration brings data from [meteo.gov.ua][ukr-hmc] into
-[Home Assistant][home-assistant] as native weather and sensor entities.
-
-## What it provides
-
-- **Weather stations** — measured conditions with daily, day, and night
-  forecasts published for a physical station.
-- **Weather locations** — current-hour conditions plus hourly and daily
-  forecasts for an exact point on the map.
-- **Radiation monitoring stations** — exposure dose rate, dose rate, and
-  observation time as published by the provider.
-- **Hydrology posts** — water level, water-level altitude, daily change, water
-  temperature, hydrological situation, and observation time.
-- **Multiple sources** — add several weather, radiation, and hydrology sources
-  under one integration entry.
-
-Configured data is refreshed every 15 minutes. The integration requests only
-the provider products needed by your selected sources.
+This integration brings data from [meteo.gov.ua][ukr-hmc] into [Home Assistant][home-assistant] as native weather and sensor entities.
 
 ## Sponsorship
 
@@ -53,8 +35,7 @@ Your generosity will help me maintain and develop more projects like this one.
 
 ## Installation
 
-The quickest way to install this integration is via [HACS][hacs-url] by
-selecting the button below:
+The quickest way to install this integration is via [HACS][hacs-url] by selecting the button below:
 
 [![Add to HACS via My Home Assistant][hacs-install-image]][hacs-install-url]
 
@@ -71,8 +52,7 @@ selecting the button below:
 
 ## Usage
 
-This integration is configured through the Home Assistant UI. Select the button
-below to add it:
+This integration is configured through the Home Assistant UI. Select the button below to add it:
 
 [![Add Ukrainian Hydrometeorological Center][install-image]][install-url]
 
@@ -80,15 +60,16 @@ below to add it:
   <summary>If the button doesn't work, add the integration manually</summary>
 
 1. Open **Settings** → **Devices & services**.
-2. Select **Add integration** and search for **Ukrainian Hydrometeorological
-   Center**.
+2. Select **Add integration** and search for **Ukrainian Hydrometeorological Center**.
 3. Follow the setup steps.
 
 </details>
 
-Choose the first data source during setup. To add more sources later, open the
-integration page and select the weather station, weather location, radiation
-monitoring station, or hydrology post you need.
+## What it provides
+
+![Creating entities](./media/create-entries.png)
+
+This integration allows creating these entities:
 
 | Source                       | Current data                                                                                   | Forecasts           |
 | ---------------------------- | ---------------------------------------------------------------------------------------------- | ------------------- |
@@ -97,26 +78,41 @@ monitoring station, or hydrology post you need.
 | Radiation monitoring station | Direct µR/h and nSv/h readings with observation time                                           | —                   |
 | Hydrology post               | Daily water measurements and the provider's hydrological situation                             | —                   |
 
-For weather locations, the current entity uses the provider's record for the
-current hour. The daily forecast follows the meteo.gov.ua presentation: 03:00
-supplies the low temperature, while 15:00 supplies the high temperature and
-condition. Incomplete days are omitted.
+For weather locations, the current entity uses the provider's record for the current hour. The daily forecast follows the meteo.gov.ua presentation: 03:00 supplies the low temperature, while 15:00 supplies the high temperature and condition. Incomplete days are omitted.
 
-Radiation readings and hydrological situations are shown as published. The
-integration does not classify safety, derive warnings, or replace official
-guidance.
+Radiation readings and hydrological situations are shown as published. The integration does not classify safety, derive warnings, or replace official guidance.
 
-The integration does not provide custom actions, automation triggers, or
-automation conditions. Use its native entities in standard Home Assistant
-automations.
+### Weather
+
+You can monitor weather conditions either by using a physical weather station or by selecting a location on the map. The integration provides both current conditions and forecasts.
+
+The difference is in forecasts:
+
+- **Weather stations** provide daily and day/night forecasts. Data is updated _every 3 hours_.
+- **Weather locations** provide hourly and daily forecasts. Data is updated _every hour_.
+
+| Weather station                                 | Weather location                                  |
+| ----------------------------------------------- | ------------------------------------------------- |
+| ![Weather Station](./media/weather-station.png) | ![Weather Location](./media/weather-location.png) |
+
+### Radiation
+
+You can monitor radiation levels by using a physical radiation monitoring station.
+
+![Radiation Monitoring Station](./media/radiation.png)
+
+### Hydrology
+
+You can monitor hydrological in Ukrainian rivers by using a physical hydrology post: water level, water temperature, conditions, etc.
+
+![Hydrology Post](./media/hydrology.png)
 
 ## Removal
 
 1. Open **Settings** → **Devices & services**.
 2. Select **Ukrainian Hydrometeorological Center**.
 3. Open the **⋮** menu and select **Delete**.
-4. Remove the integration from HACS and restart Home Assistant if you no longer
-   want the custom component installed.
+4. Remove the integration from HACS and restart Home Assistant if you no longer want the custom component installed.
 
 ## Development
 
