@@ -6,6 +6,8 @@
 [![GitHub Downloads][gh-downloads-image]][gh-downloads-url]
 [![HACS][hacs-image]][hacs-url]
 
+[**English**](./readme.md) | [Українською](./readme.uk.md)
+
 > [!NOTE]
 > This custom integration provides weather observations, forecasts, and
 > radiation measurements, and daily hydrology observations from the
