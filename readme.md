@@ -118,6 +118,13 @@ Want to contribute to the project?
 
 Thank you! Read the [contributing guide](./contributing.md) for more information.
 
+## Other integrations
+
+- [Aerial Danger](https://github.com/denysdovhan/ha-aerial-danger) — detects aerial-threat messages for selected Ukrainian regions and localities.
+- [Check Weather](https://github.com/denysdovhan/ha-check-weather) — creates a binary sensor based on forecast conditions for the next few hours.
+- [LUN Misto Air](https://github.com/denysdovhan/ha-lun-misto-air) — provides air quality and environmental data from LUN Misto monitoring stations.
+- [Yasno Outages](https://github.com/denysdovhan/ha-yasno-outages) — provides planned electricity outage schedules, sensors, and calendars from Yasno.
+
 ## License
 
 MIT © [Denys Dovhan][denysdovhan]
