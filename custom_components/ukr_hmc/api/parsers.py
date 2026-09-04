@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .const import (
+    ALERT_FLAG_KEYS,
     CLOUD_CONDITION_SELECTOR,
     CLOUD_TITLES_VARIABLE,
     CONDITION_TITLES_VARIABLE,
@@ -678,4 +679,13 @@ def parse_night_station_ids(payload: Mapping[str, Any]) -> frozenset[int]:
         )
     except (TypeError, ValueError) as exc:
         msg = "Invalid day/night data"
+        raise UkrHMCDataError(msg) from exc
+
+
+def parse_alert_flags(payload: Mapping[str, Any]) -> dict[str, bool]:
+    """Parse provider-global attention flags."""
+    try:
+        return {key: bool(int(payload[key])) for key in ALERT_FLAG_KEYS}
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid provider alert data"
         raise UkrHMCDataError(msg) from exc

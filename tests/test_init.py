@@ -38,7 +38,7 @@ def _entity_id(
     return entity_id
 
 
-async def test_setup_creates_weather_and_current_sensors(
+async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
     hass: HomeAssistant,
 ) -> None:
     entry = MockConfigEntry(
@@ -84,6 +84,12 @@ async def test_setup_creates_weather_and_current_sensors(
     location_wind_direction_entity_id = _entity_id(
         registry, "location-subentry-wind_direction"
     )
+    for unique_id in (
+        "station-subentry-sunrise",
+        "station-subentry-sunset",
+        "station-subentry-forecast_details",
+    ):
+        _entity_id(registry, unique_id)
     radiation_exposure_dose_rate_entity_id = _entity_id(
         registry,
         "radiation-subentry-exposure_dose_rate",
@@ -145,6 +151,16 @@ async def test_setup_creates_weather_and_current_sensors(
     assert hass.states.get(location_weather_description_entity_id).state == "Ясно"
     assert hass.states.get(location_wind_compass_entity_id).state == "NW"
     assert hass.states.get(location_wind_direction_entity_id).state == "315.0"
+    assert (
+        hass.states.get(_entity_id(registry, "location-subentry-precipitation")).state
+        == "0.0"
+    )
+    assert (
+        hass.states.get(
+            _entity_id(registry, f"{entry.entry_id}-attns_meteo", "binary_sensor")
+        ).state
+        == "on"
+    )
     assert hass.states.get(radiation_exposure_dose_rate_entity_id).state == "11"
     assert hass.states.get(radiation_dose_rate_entity_id).state == "96"
     assert hass.states.get(hydrology_water_level_entity_id).state == "444.0"

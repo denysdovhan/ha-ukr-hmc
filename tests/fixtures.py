@@ -211,6 +211,13 @@ DATA = UkrHMCData.create(
     radiation_observations={RADIATION_STATION.station_id: RADIATION_OBSERVATION},
     hydrology_posts={HYDROLOGY_POST.post_id: HYDROLOGY_POST},
     hydrology_observations={HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+    alert_flags={
+        "attns_meteo": True,
+        "attns_hydro": False,
+        "attns_snigo": False,
+        "attns_radio": False,
+        "attns_fire": True,
+    },
 )
 
 STATION_SUBENTRY_DATA = {

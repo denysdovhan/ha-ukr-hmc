@@ -45,6 +45,7 @@ from .models import (
     UkrHMCStation,
 )
 from .parsers import (
+    parse_alert_flags,
     parse_current_location_forecast,
     parse_forecasts,
     parse_hourly_forecasts,
@@ -247,19 +248,19 @@ class UkrHMCClient:
         radiation_observations = {}
         hydrology_posts = {}
         hydrology_observations = {}
+        day_night = await self._get_json(DAY_NIGHT_PATH)
+        alert_flags = parse_alert_flags(day_night)
         if include_station_data:
             (
                 stations,
                 lookups,
                 current,
                 forecast_payload,
-                day_night,
             ) = await asyncio.gather(
                 self.async_get_stations(),
                 self._async_get_lookups(),
                 self._get_json(CURRENT_PATH),
                 self._get_json(FORECAST_PATH),
-                self._get_json(DAY_NIGHT_PATH),
             )
             observations = parse_observations(current, lookups)
             forecasts = parse_forecasts(forecast_payload, lookups)
@@ -292,4 +293,5 @@ class UkrHMCClient:
             radiation_observations=radiation_observations,
             hydrology_posts=hydrology_posts,
             hydrology_observations=hydrology_observations,
+            alert_flags=alert_flags,
         )

@@ -27,6 +27,7 @@ from custom_components.ukr_hmc.api.const import (
     REQUEST_HEADERS,
 )
 from custom_components.ukr_hmc.api.parsers import (
+    parse_alert_flags,
     parse_current_location_forecast,
     parse_forecasts,
     parse_hourly_forecasts,
@@ -83,6 +84,14 @@ HYDROLOGY_PAYLOAD = {
         "TW": 25,
         "L": 1,
     },
+}
+ALERT_PAYLOAD = {
+    "dn": {},
+    "attns_meteo": 1,
+    "attns_hydro": 0,
+    "attns_snigo": 0,
+    "attns_radio": 0,
+    "attns_fire": 1,
 }
 
 
@@ -250,6 +259,16 @@ def test_parse_forecasts_preserves_ranges_and_text() -> None:
     assert forecast.condition_night == "невелика хмарність, дощ"
 
 
+def test_parse_alert_flags() -> None:
+    assert parse_alert_flags(ALERT_PAYLOAD) == {
+        "attns_meteo": True,
+        "attns_hydro": False,
+        "attns_snigo": False,
+        "attns_radio": False,
+        "attns_fire": True,
+    }
+
+
 def _hourly_payload(
     *,
     point: str = "50.4501,30.5234",
@@ -337,7 +356,7 @@ async def test_data_snapshot_keys_empty_forecast_by_caller_id() -> None:
         if path in (CURRENT_PATH, FORECAST_PATH):
             return {}
         if path == DAY_NIGHT_PATH:
-            return {"dn": {}}
+            return ALERT_PAYLOAD
         assert path == CITY_API_PATH
         assert params is not None
         return _hourly_payload(forecasts=[])
@@ -355,6 +374,7 @@ async def test_data_snapshot_keys_empty_forecast_by_caller_id() -> None:
         .temperature_day
         == 30
     )
+    assert snapshot.alert_flags["attns_meteo"]
 
 
 async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
@@ -373,6 +393,8 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     )
 
     async def get_json(path, params=None):
+        if path == DAY_NIGHT_PATH:
+            return ALERT_PAYLOAD
         assert path == CITY_API_PATH
         assert params is not None
         return _hourly_payload()
@@ -410,6 +432,7 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
 
 async def test_data_snapshot_can_include_only_radiation_data() -> None:
     client = UkrHMCClient(Mock())
+    client._get_json = AsyncMock(return_value=ALERT_PAYLOAD)
     client.async_get_radiation_data = AsyncMock(
         return_value=(
             {RADIATION_STATION.station_id: RADIATION_STATION},
@@ -432,6 +455,7 @@ async def test_data_snapshot_can_include_only_radiation_data() -> None:
 
 async def test_data_snapshot_can_include_only_hydrology_data() -> None:
     client = UkrHMCClient(Mock())
+    client._get_json = AsyncMock(return_value=ALERT_PAYLOAD)
     client.async_get_hydrology_data = AsyncMock(
         return_value=(
             {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
@@ -569,6 +593,7 @@ def test_parse_night_station_ids() -> None:
         (parse_lookups, ("const X = [];", WIND_SCRIPT)),
         (parse_lookups, ("const METEO_ICONS_TITLES = {};", WIND_SCRIPT)),
         (parse_location_daily_forecasts, ({},)),
+        (parse_alert_flags, ({},)),
         (parse_night_station_ids, ({"dn": {"invalid": 1}},)),
     ],
 )
@@ -589,6 +614,7 @@ def test_data_snapshot_copies_input_mappings() -> None:
         radiation_observations=dict(DATA.radiation_observations),
         hydrology_posts=dict(DATA.hydrology_posts),
         hydrology_observations=dict(DATA.hydrology_observations),
+        alert_flags=dict(DATA.alert_flags),
     )
 
     stations.clear()

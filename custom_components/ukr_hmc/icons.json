@@ -47,7 +47,20 @@
       },
       "wind_compass": {
         "default": "mdi:compass"
-      }
+      },
+      "precipitation": {"default": "mdi:weather-rainy"},
+      "sunrise": {"default": "mdi:weather-sunset-up"},
+      "sunset": {"default": "mdi:weather-sunset-down"},
+      "phenomenon_code": {"default": "mdi:code-tags"},
+      "indicator_code": {"default": "mdi:code-tags"},
+      "forecast_details": {"default": "mdi:calendar-clock"}
+    },
+    "binary_sensor": {
+      "global_weather_attention": {"default": "mdi:weather-lightning"},
+      "global_hydrology_attention": {"default": "mdi:waves-arrow-up"},
+      "global_snow_attention": {"default": "mdi:snowflake-alert"},
+      "global_radiation_attention": {"default": "mdi:radioactive"},
+      "global_fire_attention": {"default": "mdi:fire-alert"}
     }
   }
 }

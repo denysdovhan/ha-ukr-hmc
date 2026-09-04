@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -14,7 +15,9 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     DEGREE,
     PERCENTAGE,
+    EntityCategory,
     UnitOfLength,
+    UnitOfPrecipitationDepth,
     UnitOfPressure,
     UnitOfSpeed,
     UnitOfTemperature,
@@ -37,7 +40,7 @@ from .entity import UkrHMCEntity
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import datetime
+    from datetime import time
 
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
@@ -45,6 +48,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.typing import StateType
 
     from .api import (
+        UkrHMCForecastDay,
         UkrHMCHourlyForecast,
         UkrHMCHydrologyObservation,
         UkrHMCObservation,
@@ -58,8 +62,8 @@ if TYPE_CHECKING:
 class UkrHMCSensorDescription(SensorEntityDescription):
     """Describe a current weather sensor."""
 
-    station_value_fn: Callable[[UkrHMCObservation, bool], StateType | datetime]
-    location_value_fn: Callable[[UkrHMCHourlyForecast], StateType | datetime]
+    station_value_fn: Callable[[UkrHMCObservation, bool], StateType | datetime | None]
+    location_value_fn: Callable[[UkrHMCHourlyForecast], StateType | datetime | None]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -156,6 +160,65 @@ DATA_TIME_SENSOR = UkrHMCSensorDescription(
     location_value_fn=lambda forecast: forecast.forecast_at,
 )
 
+
+def _observation_time_value(
+    observation: UkrHMCObservation,
+    value: time | None,
+) -> datetime | None:
+    """Combine a station observation date with a provider-local time."""
+    if value is None:
+        return None
+    return datetime.combine(
+        observation.observed_at.date(),
+        value,
+        observation.observed_at.tzinfo,
+    )
+
+
+SUNRISE_SENSOR = UkrHMCSensorDescription(
+    key="sunrise",
+    translation_key="sunrise",
+    device_class=SensorDeviceClass.TIMESTAMP,
+    station_value_fn=lambda observation, _: _observation_time_value(
+        observation, observation.sunrise
+    ),
+    location_value_fn=lambda _: None,
+)
+SUNSET_SENSOR = UkrHMCSensorDescription(
+    key="sunset",
+    translation_key="sunset",
+    device_class=SensorDeviceClass.TIMESTAMP,
+    station_value_fn=lambda observation, _: _observation_time_value(
+        observation, observation.sunset
+    ),
+    location_value_fn=lambda _: None,
+)
+PHENOMENON_CODE_SENSOR = UkrHMCSensorDescription(
+    key="phenomenon_code",
+    translation_key="phenomenon_code",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    entity_registry_enabled_default=False,
+    station_value_fn=lambda observation, _: observation.phenomenon_code,
+    location_value_fn=lambda _: None,
+)
+INDICATOR_CODE_SENSOR = UkrHMCSensorDescription(
+    key="indicator_code",
+    translation_key="indicator_code",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    entity_registry_enabled_default=False,
+    station_value_fn=lambda observation, _: observation.indicator_code,
+    location_value_fn=lambda _: None,
+)
+PRECIPITATION_SENSOR = UkrHMCSensorDescription(
+    key="precipitation",
+    translation_key="precipitation",
+    device_class=SensorDeviceClass.PRECIPITATION,
+    native_unit_of_measurement=UnitOfPrecipitationDepth.MILLIMETERS,
+    state_class=SensorStateClass.MEASUREMENT,
+    station_value_fn=lambda *_: None,
+    location_value_fn=lambda forecast: forecast.precipitation,
+)
+
 STATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     CONDITION_SENSOR,
     WEATHER_SENSOR,
@@ -165,6 +228,10 @@ STATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     WIND_SPEED_SENSOR,
     WIND_DIRECTION_SENSOR,
     DATA_TIME_SENSOR,
+    SUNRISE_SENSOR,
+    SUNSET_SENSOR,
+    PHENOMENON_CODE_SENSOR,
+    INDICATOR_CODE_SENSOR,
 )
 
 LOCATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
@@ -175,6 +242,7 @@ LOCATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     WIND_SPEED_SENSOR,
     WIND_COMPASS_SENSOR,
     WIND_DIRECTION_SENSOR,
+    PRECIPITATION_SENSOR,
     DATA_TIME_SENSOR,
 )
 
@@ -298,6 +366,72 @@ class UkrHMCSensor(UkrHMCEntity, SensorEntity):
             self.observation,
             self._station_id in self.coordinator.data.night_station_ids,
         )
+
+
+class UkrHMCForecastDetailsSensor(UkrHMCEntity, SensorEntity):
+    """Expose direct provider station forecast details compactly."""
+
+    _attr_translation_key = "forecast_details"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialize the detailed forecast sensor."""
+        super().__init__(coordinator, subentry)
+        self._attr_unique_id = f"{subentry.subentry_id}-forecast_details"
+
+    @property
+    def station_forecasts(self) -> tuple[UkrHMCForecastDay, ...]:
+        """Return direct forecasts for the configured station."""
+        if self._station_id is None:
+            return ()
+        return self.coordinator.data.forecasts.get(self._station_id, ())
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether detailed forecasts are available."""
+        return super().available and bool(self.station_forecasts)
+
+    @property
+    @override
+    def native_value(self) -> str | None:
+        """Return the first forecast date."""
+        if not self.station_forecasts:
+            return None
+        return self.station_forecasts[0].date.isoformat()
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return direct day/night fields unsupported by HA weather forecasts."""
+        return {
+            "forecasts": [
+                {
+                    "date": forecast.date.isoformat(),
+                    "temperature_night_min": forecast.temperature_night_from,
+                    "temperature_night_max": forecast.temperature_night_to,
+                    "temperature_day_min": forecast.temperature_day_from,
+                    "temperature_day_max": forecast.temperature_day_to,
+                    "cloudiness": forecast.cloudiness,
+                    "precipitation_night": forecast.precipitation_night,
+                    "precipitation_day": forecast.precipitation_day,
+                    "wind_speed_night": forecast.wind_speed_night,
+                    "wind_speed_day": forecast.wind_speed_day,
+                    "sunrise": (
+                        forecast.sunrise.isoformat() if forecast.sunrise else None
+                    ),
+                    "sunset": (
+                        forecast.sunset.isoformat() if forecast.sunset else None
+                    ),
+                    "provider_code": forecast.provider_code,
+                }
+                for forecast in self.station_forecasts
+            ]
+        }
 
 
 class UkrHMCRadiationSensor(UkrHMCEntity, SensorEntity):
@@ -435,3 +569,8 @@ async def async_setup_entry(
             ],
             config_subentry_id=subentry.subentry_id,
         )
+        if subentry.subentry_type == SUBENTRY_TYPE_WEATHER_STATION:
+            async_add_entities(
+                [UkrHMCForecastDetailsSensor(coordinator, subentry)],
+                config_subentry_id=subentry.subentry_id,
+            )

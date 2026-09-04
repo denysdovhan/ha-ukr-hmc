@@ -187,7 +187,20 @@
       },
       "observation_time": {
         "name": "Час даних"
-      }
+      },
+      "precipitation": {"name": "Поточні опади"},
+      "sunrise": {"name": "Схід сонця"},
+      "sunset": {"name": "Захід сонця"},
+      "phenomenon_code": {"name": "Службовий код погодного явища"},
+      "indicator_code": {"name": "Службовий код індикатора"},
+      "forecast_details": {"name": "Детальний прогноз"}
+    },
+    "binary_sensor": {
+      "global_weather_attention": {"name": "Загальне метеорологічне попередження"},
+      "global_hydrology_attention": {"name": "Загальне гідрологічне попередження"},
+      "global_snow_attention": {"name": "Загальне снігове попередження"},
+      "global_radiation_attention": {"name": "Загальне радіаційне попередження"},
+      "global_fire_attention": {"name": "Загальне попередження про пожежну небезпеку"}
     }
   }
 }

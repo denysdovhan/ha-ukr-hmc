@@ -8,9 +8,20 @@ from unittest.mock import AsyncMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.components.weather import WeatherEntityFeature
-from homeassistant.const import DEGREE, UnitOfLength, UnitOfPressure, UnitOfTemperature
+from homeassistant.const import (
+    DEGREE,
+    EntityCategory,
+    UnitOfLength,
+    UnitOfPrecipitationDepth,
+    UnitOfPressure,
+    UnitOfTemperature,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.ukr_hmc.binary_sensor import (
+    ALERT_FLAGS,
+    UkrHMCAlertBinarySensor,
+)
 from custom_components.ukr_hmc.const import (
     CONFIGURATION_URL,
     DOMAIN,
@@ -23,6 +34,7 @@ from custom_components.ukr_hmc.sensor import (
     LOCATION_SENSORS,
     RADIATION_SENSORS,
     STATION_SENSORS,
+    UkrHMCForecastDetailsSensor,
     UkrHMCHydrologySensor,
     UkrHMCRadiationSensor,
     UkrHMCSensor,
@@ -202,6 +214,10 @@ async def test_station_current_sensors_use_observation_values(
     assert values["wind_speed"] == 3
     assert values["wind_direction"] == 315
     assert values["observation_time"].isoformat() == "2026-07-30T15:00:00+03:00"
+    assert values["sunrise"].isoformat() == "2026-07-30T05:22:00+03:00"
+    assert values["sunset"].isoformat() == "2026-07-30T20:46:00+03:00"
+    assert values["phenomenon_code"] == 6
+    assert values["indicator_code"] == 0
     assert "wind_compass" not in values
 
     wind_direction = next(
@@ -238,6 +254,10 @@ async def test_location_current_sensors_use_point_forecast_values(
     assert sensors["wind_speed"].native_value == 2
     assert sensors["wind_compass"].native_value == "NW"
     assert sensors["wind_direction"].native_value == 315
+    assert sensors["precipitation"].native_value == 0
+    assert sensors["precipitation"].native_unit_of_measurement == (
+        UnitOfPrecipitationDepth.MILLIMETERS
+    )
     assert (
         sensors["observation_time"].native_value.isoformat()
         == "2026-07-30T22:00:00+03:00"
@@ -252,6 +272,53 @@ async def test_location_current_sensors_use_point_forecast_values(
     assert wind_compass.device_class is None
     assert wind_compass.native_unit_of_measurement is None
     assert wind_compass.state_class is None
+
+
+async def test_station_detailed_forecast_sensor(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    subentry = next(iter(entry.subentries.values()))
+    sensor = UkrHMCForecastDetailsSensor(coordinator, subentry)
+
+    assert sensor.native_value == "2026-07-30"
+    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
+    assert sensor.extra_state_attributes == {
+        "forecasts": [
+            {
+                "date": "2026-07-30",
+                "temperature_night_min": 13,
+                "temperature_night_max": 15,
+                "temperature_day_min": 25,
+                "temperature_day_max": 27,
+                "cloudiness": "невелика хмарність",
+                "precipitation_night": "без опадів",
+                "precipitation_day": "без опадів",
+                "wind_speed_night": "3-8",
+                "wind_speed_day": "5-10",
+                "sunrise": "05:22:00",
+                "sunset": "20:46:00",
+                "provider_code": 16,
+            }
+        ]
+    }
+
+
+async def test_global_attention_binary_sensors(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    sensors = {
+        description.key: UkrHMCAlertBinarySensor(
+            coordinator, entry.entry_id, description
+        )
+        for description in ALERT_FLAGS
+    }
+
+    assert sensors["attns_meteo"].is_on
+    assert not sensors["attns_hydro"].is_on
+    assert sensors["attns_fire"].is_on
+    assert sensors["attns_meteo"].device_info["model"] == "UkrHMC Global Alerts"
 
 
 async def test_radiation_sensors_use_direct_provider_values(

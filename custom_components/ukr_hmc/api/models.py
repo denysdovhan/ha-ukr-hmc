@@ -233,6 +233,7 @@ class UkrHMCData:
     radiation_observations: Mapping[int, UkrHMCRadiationObservation]
     hydrology_posts: Mapping[int, UkrHMCHydrologyPost]
     hydrology_observations: Mapping[int, UkrHMCHydrologyObservation]
+    alert_flags: Mapping[str, bool]
 
     @classmethod
     def create(  # noqa: PLR0913
@@ -247,6 +248,7 @@ class UkrHMCData:
         radiation_observations: dict[int, UkrHMCRadiationObservation],
         hydrology_posts: dict[int, UkrHMCHydrologyPost],
         hydrology_observations: dict[int, UkrHMCHydrologyObservation],
+        alert_flags: dict[str, bool],
     ) -> UkrHMCData:
         """Create an immutable provider snapshot."""
         return cls(
@@ -259,4 +261,5 @@ class UkrHMCData:
             radiation_observations=MappingProxyType(dict(radiation_observations)),
             hydrology_posts=MappingProxyType(dict(hydrology_posts)),
             hydrology_observations=MappingProxyType(dict(hydrology_observations)),
+            alert_flags=MappingProxyType(dict(alert_flags)),
         )

@@ -80,6 +80,8 @@ This integration allows creating these entities:
 | Radiation monitoring station | Direct µR/h and nSv/h readings with observation time                                           | —                   |
 | Hydrology post               | Daily water measurements and the provider's hydrological situation                             | —                   |
 
+The integration also exposes five provider-global attention flags as binary sensors. They indicate attention to a weather, hydrology, snow, radiation, or fire product, but are not regional warnings and do not include severity or validity times.
+
 ### Weather
 
 You can monitor weather conditions either by using a physical weather station or by selecting a location on the map. The integration provides both current conditions and forecasts.
@@ -88,6 +90,8 @@ The difference is in forecasts:
 
 - **Weather stations** provide daily and day/night forecasts. Data is updated _every 3 hours_.
 - **Weather locations** provide hourly and daily forecasts. Data is updated _every hour_.
+
+Weather locations expose current precipitation. Physical stations also expose sunrise, sunset, provider diagnostic codes, and a compact detailed-forecast sensor. Its attributes preserve the published day/night temperature ranges, precipitation text, cloudiness, and wind-speed ranges.
 
 | Weather station                                 | Weather location                                  |
 | ----------------------------------------------- | ------------------------------------------------- |

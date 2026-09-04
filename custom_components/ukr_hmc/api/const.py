@@ -152,6 +152,13 @@ FORECAST_PROVIDER_CODE_KEY: Final = "MP"
 SUNRISE_KEY: Final = "SR"
 SUNSET_KEY: Final = "SS"
 DAY_NIGHT_STATIONS_KEY: Final = "dn"
+ALERT_FLAG_KEYS: Final = (
+    "attns_meteo",
+    "attns_hydro",
+    "attns_snigo",
+    "attns_radio",
+    "attns_fire",
+)
 
 # Provider enum values.
 CLOUD_CONDITION_SELECTOR: Final = 0

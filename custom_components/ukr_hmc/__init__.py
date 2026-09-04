@@ -14,7 +14,7 @@ from .data import UkrHMCConfigEntry, UkrHMCRuntimeData
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-PLATFORMS = (Platform.SENSOR, Platform.WEATHER)
+PLATFORMS = (Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER)
 
 
 async def async_setup_entry(

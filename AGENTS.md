@@ -53,6 +53,8 @@ types.
   data models, and parsers. Keep it ready for extraction to a standalone package.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
+- `binary_sensor.py` - exposes the provider's five global attention flags once
+  per config entry without treating them as regional warnings.
 - `config_flow.py` - creates the single service entry and typed weather,
   radiation, and hydrology subentries.
 - `const.py` - integration constants, subentry types, and the 15-minute update
@@ -130,8 +132,8 @@ types.
   condition, provider weather text, temperature, humidity, pressure, wind speed,
   numeric wind direction, and data time.
 - Weather-location sources expose canonical condition, provider weather text,
-  temperature, humidity, wind speed, raw compass direction, mapped numeric wind
-  direction, and data time. Do not create a current pressure sensor because the
+  temperature, humidity, current precipitation, wind speed, raw compass direction,
+  mapped numeric wind direction, and data time. Do not create a current pressure sensor because the
   exact current-hour location record does not publish pressure.
 - Station current values come from physical observations. Location current
   values come from the exact current-hour `fulldata` record for the point.
@@ -150,7 +152,15 @@ types.
 - Do not use physical-station observations as location current values or infer
   a station from latitude and longitude.
 - Keep temperature ranges, textual cloudiness and precipitation, wind ranges,
-  sunrise, sunset, and other unsupported fields in API models for future use.
+  sunrise, sunset, and other unsupported fields in API models. Expose station
+  forecast values that do not fit Home Assistant's forecast schema through one
+  compact diagnostic detailed-forecast sensor rather than per-day entities.
+- Weather stations expose sunrise and sunset timestamp sensors. Provider
+  phenomenon and indicator codes are disabled-by-default diagnostic sensors.
+- Parse all five global `attns_*` flags from the day/night payload and expose
+  them once per config entry as problem-class binary sensors. They indicate only
+  provider-global attention and must not be described as regional warnings,
+  because the payload has no region, severity, text, or validity interval.
 - The wind-direction sensor exposes degrees with the native wind-direction device
   class. For location current values, map the direct `WindCompass8` value through
   the provider bearing mapping and also expose the raw compass value separately.
