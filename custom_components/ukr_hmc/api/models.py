@@ -95,6 +95,55 @@ class UkrHMCHydrologyObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class UkrHMCSnowStation:
+    """Physical snow and avalanche monitoring station."""
+
+    station_id: int
+    name: str
+    latitude: float
+    longitude: float
+
+
+@dataclass(frozen=True, slots=True)
+class UkrHMCSnowObservation:
+    """Latest snow and weather observation for one mountain station."""
+
+    observed_on: date
+    temperature: float
+    snow_depth: float
+    snow_depth_change: float
+    humidity: float
+    wind_speed: float | None
+    wind: UkrHMCWind
+    cloudiness: str
+    phenomena: str
+
+
+@dataclass(frozen=True, slots=True)
+class UkrHMCHydrologyWarning:
+    """Hydrological warning for an official basin area."""
+
+    region_id: int
+    basin_name: str
+    danger_level: int
+    phenomenon_code: int | None
+    phenomenon: str | None
+    description: str
+    period: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+    geometry_path: str
+
+    def is_active(self, now: datetime) -> bool:
+        """Return whether the warning is active at the supplied instant."""
+        if self.starts_at is None or self.ends_at is None:
+            return False
+        if now < self.starts_at:
+            return False
+        return now <= self.ends_at
+
+
+@dataclass(frozen=True, slots=True)
 class UkrHMCLocationForecastRequest:
     """Location accepted by the provider's forecast endpoint."""
 
@@ -231,6 +280,7 @@ class UkrHMCWeatherWarning:
     period: str
     starts_at: datetime | None
     ends_at: datetime | None
+    geometry_path: str
 
     def is_active(self, now: datetime) -> bool:
         """Return whether the warning is active at the supplied instant."""
@@ -256,9 +306,22 @@ class UkrHMCData:
     radiation_observations: Mapping[int, UkrHMCRadiationObservation]
     hydrology_posts: Mapping[int, UkrHMCHydrologyPost]
     hydrology_observations: Mapping[int, UkrHMCHydrologyObservation]
+    snow_stations: Mapping[int, UkrHMCSnowStation]
+    snow_observations: Mapping[int, UkrHMCSnowObservation]
     alert_flags: Mapping[str, bool]
     weather_warnings_updated_at: datetime | None
     regional_weather_warnings: Mapping[int, tuple[UkrHMCWeatherWarning, ...]]
+    location_region_ids: Mapping[str, int]
+    fire_warnings_updated_at: datetime | None
+    regional_fire_warnings: Mapping[int, tuple[UkrHMCWeatherWarning, ...]]
+    location_fire_region_ids: Mapping[str, int]
+    snow_warnings_updated_at: datetime | None
+    regional_snow_warnings: Mapping[int, tuple[UkrHMCWeatherWarning, ...]]
+    location_snow_region_ids: Mapping[str, int]
+    station_snow_region_ids: Mapping[int, int]
+    hydrology_warnings_updated_at: datetime | None
+    regional_hydrology_warnings: Mapping[int, tuple[UkrHMCHydrologyWarning, ...]]
+    hydrology_post_warning_region_ids: Mapping[int, int]
 
     @classmethod
     def create(  # noqa: PLR0913
@@ -273,10 +336,26 @@ class UkrHMCData:
         radiation_observations: dict[int, UkrHMCRadiationObservation],
         hydrology_posts: dict[int, UkrHMCHydrologyPost],
         hydrology_observations: dict[int, UkrHMCHydrologyObservation],
+        snow_stations: dict[int, UkrHMCSnowStation],
+        snow_observations: dict[int, UkrHMCSnowObservation],
         alert_flags: dict[str, bool],
         weather_warnings_updated_at: datetime | None = None,
         regional_weather_warnings: dict[int, tuple[UkrHMCWeatherWarning, ...]]
         | None = None,
+        location_region_ids: dict[str, int] | None = None,
+        fire_warnings_updated_at: datetime | None = None,
+        regional_fire_warnings: dict[int, tuple[UkrHMCWeatherWarning, ...]]
+        | None = None,
+        location_fire_region_ids: dict[str, int] | None = None,
+        snow_warnings_updated_at: datetime | None = None,
+        regional_snow_warnings: dict[int, tuple[UkrHMCWeatherWarning, ...]]
+        | None = None,
+        location_snow_region_ids: dict[str, int] | None = None,
+        station_snow_region_ids: dict[int, int] | None = None,
+        hydrology_warnings_updated_at: datetime | None = None,
+        regional_hydrology_warnings: dict[int, tuple[UkrHMCHydrologyWarning, ...]]
+        | None = None,
+        hydrology_post_warning_region_ids: dict[int, int] | None = None,
     ) -> UkrHMCData:
         """Create an immutable provider snapshot."""
         return cls(
@@ -289,9 +368,32 @@ class UkrHMCData:
             radiation_observations=MappingProxyType(dict(radiation_observations)),
             hydrology_posts=MappingProxyType(dict(hydrology_posts)),
             hydrology_observations=MappingProxyType(dict(hydrology_observations)),
+            snow_stations=MappingProxyType(dict(snow_stations)),
+            snow_observations=MappingProxyType(dict(snow_observations)),
             alert_flags=MappingProxyType(dict(alert_flags)),
             weather_warnings_updated_at=weather_warnings_updated_at,
             regional_weather_warnings=MappingProxyType(
                 dict(regional_weather_warnings or {})
+            ),
+            location_region_ids=MappingProxyType(dict(location_region_ids or {})),
+            fire_warnings_updated_at=fire_warnings_updated_at,
+            regional_fire_warnings=MappingProxyType(dict(regional_fire_warnings or {})),
+            location_fire_region_ids=MappingProxyType(
+                dict(location_fire_region_ids or {})
+            ),
+            snow_warnings_updated_at=snow_warnings_updated_at,
+            regional_snow_warnings=MappingProxyType(dict(regional_snow_warnings or {})),
+            location_snow_region_ids=MappingProxyType(
+                dict(location_snow_region_ids or {})
+            ),
+            station_snow_region_ids=MappingProxyType(
+                dict(station_snow_region_ids or {})
+            ),
+            hydrology_warnings_updated_at=hydrology_warnings_updated_at,
+            regional_hydrology_warnings=MappingProxyType(
+                dict(regional_hydrology_warnings or {})
+            ),
+            hydrology_post_warning_region_ids=MappingProxyType(
+                dict(hydrology_post_warning_region_ids or {})
             ),
         )

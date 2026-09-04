@@ -79,8 +79,9 @@ This integration allows creating these entities:
 | Weather location             | Forecast conditions for the selected map point; physical station measurements are not used     | Hourly and daily    |
 | Radiation monitoring station | Direct µR/h and nSv/h readings with observation time                                           | —                   |
 | Hydrology post               | Daily water measurements and the provider's hydrological situation                             | —                   |
+| Snow and avalanche station   | Snow depth/change, temperature, humidity, wind, cloudiness, phenomena, and observation date     | —                   |
 
-The integration also exposes five provider-global attention flags as binary sensors. They indicate attention to a weather, hydrology, snow, radiation, or fire product. In addition, every physical weather station gets a regional meteorological warning binary sensor with the oblast, danger level, warning text, phenomenon code, and validity period published by UkrHMC.
+The integration exposes provider-global weather and radiation attention flags. Fire and snow use regional sources for each weather location. Hydrology posts use official basin polygons for detailed warning levels, text, phenomena, and validity periods. Read-only Home Assistant calendars show all matched warning periods.
 
 ### Weather
 
@@ -114,8 +115,14 @@ Weather locations expose current precipitation. Physical stations also expose su
 | Sunrise / sunset                             |       ✅        |        —         | Timestamp sensors.                                                                                                                                   |
 | Phenomenon / indicator code                  |       ✅        |        —         | Provider service codes; disabled by default.                                                                                                         |
 | Detailed forecast                            |       ✅        |        —         | Diagnostic attributes with day/night temperature ranges, precipitation text, cloudiness, wind ranges, sunrise, sunset, and provider code.            |
-| Regional weather warning                     |       ✅        |        —         | Problem sensor active only during a current warning, with text, codes, timing, and active/future counts in attributes.                               |
-| Regional weather warning level               |       ✅        |        —         | Enum sensor with `none`, `yellow`, `orange`, or `red`, suitable for dashboards and automations.                                                      |
+| Regional weather warning                     |       ✅        |        ✅        | Problem sensor active only during a current warning, with text, codes, timing, and active/future counts in attributes.                               |
+| Regional weather warning level               |       ✅        |        ✅        | Enum sensor with `none`, `yellow`, `orange`, or `red`, suitable for dashboards and automations.                                                      |
+| Regional fire danger level                    |       ✅        |        ✅        | Official UkrHMC categories: none, extreme, or prolonged extreme, with periods in attributes.                                                        |
+| Regional avalanche danger level               |       ✅        |        ✅        | Official 1–5 avalanche scale; exact points and stations are matched against published mountain-area polygons.                                      |
+| Weather warning calendar                      |       ✅        |        ✅        | Timed meteorological, fire, and avalanche warnings as Home Assistant calendar events.                                                              |
+| Feels like temperature                        |       ✅        |        ✅        | Derived Steadman apparent temperature from temperature, humidity, and wind speed; excludes solar radiation.                                        |
+| Hydrological warning level                    |        —        |        —         | Added to hydrology posts with river, official basin, phenomenon, full text, and validity period.                                                    |
+| Hydrological warning calendar                 |        —        |        —         | Timed basin warnings matched to the selected hydrology post.                                                                                       |
 
 Hourly forecasts are available only for a configured **weather location**. They come directly from the UkrHMC `dataDetailed` point-forecast product and may include temperature, condition, precipitation, pressure, humidity, dew point, wind speed, gust, and direction when the provider publishes them. Home Assistant exposes forecasts through the weather entity forecast service and forecast-capable dashboard cards, not as one sensor per hour.
 
@@ -135,6 +142,18 @@ You can monitor hydrological in Ukrainian rivers by using a physical hydrology p
 
 <img src="./media/hydrology.png" alt="Hydrology Post" width="500">
 
+### Snow and avalanche stations
+
+Add a **Snow and avalanche station** subentry to monitor one of the 12 Carpathian
+stations published by UkrHMC. The integration exposes snow-cover height and its
+change in centimetres, air temperature, humidity, wind, cloudiness, weather
+phenomena, and the feed date.
+
+The source does not publish snow density, a separate surface-state field, or an
+exact observation time. In particular, provider field `SD` means a change in
+snow height—not density—so the integration deliberately does not invent a
+density sensor. UkrHMC also omits wind for the Драгобрат station.
+
 ### Service diagnostics and global attention flags
 
 The shared UkrHMC service device exposes:
@@ -145,11 +164,80 @@ The shared UkrHMC service device exposes:
 | Last successful update                                         | Timestamp of the latest complete provider snapshot retained across temporary failures.                                    |
 | Data stale                                                     | Problem sensor activated when the last successful complete update is older than 45 minutes.                               |
 | Consecutive update failures                                    | Number of failed provider updates since the latest successful refresh.                                                    |
-| Global weather, hydrology, snow, radiation, and fire attention | Direct provider-global flags. They are not regional warnings and contain no severity, text, or validity period.           |
+| Global weather and radiation attention | Direct provider-global flags. They contain no severity, text, or validity period.                                                   |
 
-The regional weather warning sensor is attached to each configured physical weather station. Its state is on while at least one warning for that station's oblast is active. Attributes include `region`, active `level`, `level_name`, `active_count`, `future_count`, `next_start`, `next_end`, the provider update time, and a `warnings` list with description, phenomenon code, level, raw period, start, end, and status. The companion enum sensor exposes the highest active level as `none`, `yellow`, `orange`, or `red`. Exact map locations do not receive these entities because the point-forecast response does not provide a reliable oblast identifier.
+The regional weather warning sensors are attached to physical stations and exact map locations. Stations use their direct UkrHMC oblast id. For a map location, the integration checks its coordinates against the official GeoJSON polygon of every oblast that currently has a published warning; those polygons are cached. The problem sensor is on while at least one matched warning is active. Attributes include `region`, `region_id`, active `level`, `level_name`, `active_count`, `future_count`, `next_start`, `next_end`, the provider update time, and a `warnings` list with description, phenomenon code, level, raw period, start, end, and status. The companion enum sensor exposes the highest active level as `none`, `yellow`, `orange`, or `red`.
 
 All data is polled through one shared coordinator every 15 minutes. The diagnostic update time is the moment Home Assistant successfully received the complete snapshot, not the observation time published by an individual station. Forecast summary sensors require complete provider hours for their selected horizon; they become unknown instead of treating missing precipitation as zero.
+
+Home Assistant's **Download diagnostics** action produces a privacy-safe report
+for support issues. It contains endpoint availability, the last successful
+update, consecutive failures, configured source-type counts, and aggregate data
+record counts. It excludes coordinates, station identifiers, subentry names,
+unique IDs, and user-provided location labels.
+
+Each configured weather source also has event entities for meteorological, fire,
+and avalanche warnings; hydrology posts have a hydrological warning event
+entity. Use their `started`, `level_increased`, and `ended` event types as Home
+Assistant automation triggers. Event data includes the warning type, previous
+and current level, territory, region, text, provider period, and parsed start/end
+time. The initial snapshot is treated as a baseline, so restarting Home
+Assistant does not create a false warning-start event.
+
+#### Warning automation examples
+
+Event entity IDs depend on the name assigned to the configured station or
+location. Select the required `event.*` entity in Home Assistant and substitute
+its entity ID below.
+
+Send a notification when a warning starts or its level increases:
+
+```yaml
+alias: UkrHMC important warning
+triggers:
+  - trigger: state
+    entity_id: event.kyiv_weather_meteorological_warning_changes
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state.attributes.event_type
+         in ['started', 'level_increased'] }}
+actions:
+  - action: notify.notify
+    data:
+      title: >-
+        UkrHMC warning level {{ trigger.to_state.attributes.level }}
+      message: >-
+        {{ trigger.to_state.attributes.territory }}:
+        {{ trigger.to_state.attributes.text or 'No additional description' }}
+mode: queued
+```
+
+Notify when a warning ends:
+
+```yaml
+alias: UkrHMC warning ended
+triggers:
+  - trigger: state
+    entity_id:
+      - event.kyiv_weather_meteorological_warning_changes
+      - event.kyiv_weather_fire_danger_warning_changes
+      - event.kyiv_weather_avalanche_warning_changes
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state.attributes.event_type == 'ended' }}
+actions:
+  - action: notify.notify
+    data:
+      message: >-
+        {{ trigger.to_state.attributes.warning_type }} warning ended for
+        {{ trigger.to_state.attributes.territory }}.
+mode: queued
+```
+
+Hydrology event entities use the same attributes and event types, so the same
+automation pattern works with a `hydrology_warning_changes` event entity.
 
 ## Removal
 

@@ -12,12 +12,15 @@ from custom_components.ukr_hmc.api import (
     UkrHMCHourlyForecast,
     UkrHMCHydrologyObservation,
     UkrHMCHydrologyPost,
+    UkrHMCHydrologyWarning,
     UkrHMCLocationForecast,
     UkrHMCLocationForecastDay,
     UkrHMCLocationForecastRequest,
     UkrHMCObservation,
     UkrHMCRadiationObservation,
     UkrHMCRadiationStation,
+    UkrHMCSnowObservation,
+    UkrHMCSnowStation,
     UkrHMCStation,
     UkrHMCWeatherWarning,
     UkrHMCWind,
@@ -26,6 +29,7 @@ from custom_components.ukr_hmc.const import (
     CONF_STATION_ID,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
+    SUBENTRY_TYPE_SNOW_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
 )
@@ -100,6 +104,35 @@ HYDROLOGY_OBSERVATION = UkrHMCHydrologyObservation(
     water_level_change=-0.01,
     water_temperature=25.0,
     level_class=1,
+)
+HYDROLOGY_WARNING = UkrHMCHydrologyWarning(
+    region_id=61,
+    basin_name="Суббасейн Середнього Дніпра (Київська область)",
+    danger_level=2,
+    phenomenon_code=1,
+    phenomenon="Підвищення рівнів води",
+    description="Очікується підвищення рівнів води.",
+    period="04.09, 00:00 — 05.09, 23:59",
+    starts_at=None,
+    ends_at=None,
+    geometry_path="/_/geo/hb/61.json",
+)
+SNOW_STATION = UkrHMCSnowStation(
+    station_id=9,
+    name="Плай",
+    latitude=48.6674,
+    longitude=23.198,
+)
+SNOW_OBSERVATION = UkrHMCSnowObservation(
+    observed_on=date(2026, 4, 20),
+    temperature=4.0,
+    snow_depth=11.0,
+    snow_depth_change=-3.0,
+    humidity=97.0,
+    wind_speed=4.0,
+    wind=UkrHMCWind(code=1, abbreviation="NNE", name="Північно-Східний"),
+    cloudiness="Хмарно",
+    phenomena="Туман",
 )
 LOCATION_FORECAST_REQUEST = UkrHMCLocationForecastRequest(
     name="Home",
@@ -204,6 +237,7 @@ WEATHER_WARNING = UkrHMCWeatherWarning(
     period="05.09 09:00 — 21:00",
     starts_at=None,
     ends_at=None,
+    geometry_path="/_/geo/ua/1.json",
 )
 DATA = UkrHMCData.create(
     stations={
@@ -224,6 +258,8 @@ DATA = UkrHMCData.create(
     radiation_observations={RADIATION_STATION.station_id: RADIATION_OBSERVATION},
     hydrology_posts={HYDROLOGY_POST.post_id: HYDROLOGY_POST},
     hydrology_observations={HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+    snow_stations={SNOW_STATION.station_id: SNOW_STATION},
+    snow_observations={SNOW_STATION.station_id: SNOW_OBSERVATION},
     alert_flags={
         "attns_meteo": True,
         "attns_hydro": False,
@@ -233,6 +269,29 @@ DATA = UkrHMCData.create(
     },
     weather_warnings_updated_at=WEATHER_WARNING_UPDATED_AT,
     regional_weather_warnings={1: (WEATHER_WARNING,)},
+    location_region_ids={"location-subentry": 1},
+    fire_warnings_updated_at=WEATHER_WARNING_UPDATED_AT,
+    regional_fire_warnings={
+        1: (
+            replace(
+                WEATHER_WARNING,
+                danger_level=3,
+                phenomenon_code=None,
+                description="",
+                period="05.09 00:01 — 23:59",
+                starts_at=datetime(2026, 9, 5, 0, 1, tzinfo=ZoneInfo("Europe/Kyiv")),
+                ends_at=datetime(2026, 9, 5, 23, 59, tzinfo=ZoneInfo("Europe/Kyiv")),
+            ),
+        )
+    },
+    location_fire_region_ids={"location-subentry": 1},
+    snow_warnings_updated_at=WEATHER_WARNING_UPDATED_AT,
+    regional_snow_warnings={},
+    location_snow_region_ids={},
+    station_snow_region_ids={},
+    hydrology_warnings_updated_at=WEATHER_WARNING_UPDATED_AT,
+    regional_hydrology_warnings={61: (HYDROLOGY_WARNING,)},
+    hydrology_post_warning_region_ids={HYDROLOGY_POST.post_id: 61},
 )
 
 STATION_SUBENTRY_DATA = {
@@ -269,4 +328,12 @@ HYDROLOGY_SUBENTRY_DATA = {
     "subentry_type": SUBENTRY_TYPE_HYDROLOGY_POST,
     "title": "Kyiv hydrology",
     "unique_id": f"hydrology:{HYDROLOGY_POST.post_id}",
+}
+
+SNOW_SUBENTRY_DATA = {
+    "data": {CONF_STATION_ID: SNOW_STATION.station_id},
+    "subentry_id": "snow-subentry",
+    "subentry_type": SUBENTRY_TYPE_SNOW_STATION,
+    "title": "Плай snow",
+    "unique_id": f"snow:{SNOW_STATION.station_id}",
 }

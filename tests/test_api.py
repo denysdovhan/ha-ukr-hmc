@@ -18,14 +18,20 @@ from custom_components.ukr_hmc.api.const import (
     FORECAST_PATH,
     HYDROLOGY_DATA_PATH,
     HYDROLOGY_POST_CATALOG_PATH,
+    HYDROLOGY_WARNING_LOOKUP_PATH,
+    HYDROLOGY_WARNINGS_PATH,
     QUERY_ACTION,
     QUERY_CITY,
     QUERY_LANGUAGE,
     QUERY_LOCATION,
     RADIATION_DATA_PATH,
     RADIATION_STATION_CATALOG_PATH,
+    REGIONAL_FIRE_WARNINGS_PATH,
+    REGIONAL_SNOW_WARNINGS_PATH,
     REGIONAL_WEATHER_WARNINGS_PATH,
     REQUEST_HEADERS,
+    SNOW_DATA_PATH,
+    SNOW_STATION_CATALOG_PATH,
 )
 from custom_components.ukr_hmc.api.parsers import (
     parse_alert_flags,
@@ -40,8 +46,13 @@ from custom_components.ukr_hmc.api.parsers import (
     parse_observations,
     parse_radiation_observations,
     parse_radiation_station_catalog,
+    parse_region_geometry,
+    parse_regional_hydrology_warnings,
     parse_regional_weather_warnings,
+    parse_snow_observations,
+    parse_snow_station_catalog,
     parse_station_catalog,
+    point_in_region,
 )
 
 from .fixtures import (
@@ -51,6 +62,8 @@ from .fixtures import (
     LOCATION_FORECAST_REQUEST,
     RADIATION_OBSERVATION,
     RADIATION_STATION,
+    SNOW_OBSERVATION,
+    SNOW_STATION,
     STATION,
 )
 
@@ -76,6 +89,21 @@ HYDROLOGY_POST_SCRIPT = (
     'const HYDRO_POSTS = {"80986": {"R": "Дніпро", "P": "Київ", '
     '"X": 50.442147, "Y": 30.569539}};'
 )
+SNOW_STATION_SCRIPT = 'const ATTNS_STANTIONS = {"9":{"G":[48.6674,23.198],"T":"Плай"}};'
+SNOW_PAYLOAD = {
+    "0": "20.04.2026",
+    "9": {
+        "ST": 9,
+        "TT": 4,
+        "SN": 11,
+        "SD": -3,
+        "WD": 1,
+        "WS": 4,
+        "VL": 97,
+        "HT": "Хмарно",
+        "OT": "Туман",
+    },
+}
 HYDROLOGY_PAYLOAD = {
     "0": "06.08.2026",
     "80986": {
@@ -103,6 +131,7 @@ WEATHER_WARNING_PAYLOAD = {
             {
                 "R": 1,
                 "L": 1,
+                "U": "/_/geo/ua/1.json",
                 "A": [
                     {
                         "T": 8,
@@ -113,6 +142,23 @@ WEATHER_WARNING_PAYLOAD = {
             }
         ],
         [],
+    ],
+}
+REGION_GEOMETRY_PAYLOAD = {
+    "type": "GeometryCollection",
+    "geometries": [
+        {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [30.0, 50.0],
+                    [31.0, 50.0],
+                    [31.0, 51.0],
+                    [30.0, 51.0],
+                    [30.0, 50.0],
+                ]
+            ],
+        }
     ],
 }
 
@@ -206,6 +252,30 @@ async def test_client_gets_hydrology_catalog_and_observations() -> None:
     assert observations[HYDROLOGY_POST.post_id] == HYDROLOGY_OBSERVATION
     client._get_text.assert_awaited_once_with(HYDROLOGY_POST_CATALOG_PATH)
     client._get_json.assert_awaited_once_with(HYDROLOGY_DATA_PATH)
+
+
+def test_parse_snow_catalog_and_observations() -> None:
+    stations = parse_snow_station_catalog(SNOW_STATION_SCRIPT)
+    lookups = parse_lookups(ICON_SCRIPT, WIND_SCRIPT)
+    observations = parse_snow_observations(SNOW_PAYLOAD, lookups)
+
+    assert stations[SNOW_STATION.station_id] == SNOW_STATION
+    assert observations[SNOW_STATION.station_id] == SNOW_OBSERVATION
+
+
+async def test_client_gets_snow_catalog_and_observations() -> None:
+    client = UkrHMCClient(Mock())
+    client._get_text = AsyncMock(
+        side_effect=[SNOW_STATION_SCRIPT, ICON_SCRIPT, WIND_SCRIPT]
+    )
+    client._get_json = AsyncMock(return_value=SNOW_PAYLOAD)
+
+    stations, observations = await client.async_get_snow_data()
+
+    assert stations[SNOW_STATION.station_id] == SNOW_STATION
+    assert observations[SNOW_STATION.station_id] == SNOW_OBSERVATION
+    client._get_text.assert_any_await(SNOW_STATION_CATALOG_PATH)
+    client._get_json.assert_awaited_once_with(SNOW_DATA_PATH)
 
 
 def test_parse_observations_and_lookups() -> None:
@@ -302,6 +372,75 @@ def test_parse_regional_weather_warnings() -> None:
     assert warning.period == "05.09 09:00 — 21:00"
     assert warning.starts_at.isoformat() == "2026-09-05T09:00:00+03:00"
     assert warning.ends_at.isoformat() == "2026-09-05T21:00:00+03:00"
+    assert warning.geometry_path == "/_/geo/ua/1.json"
+
+
+def test_parse_regional_warning_multiday_period() -> None:
+    payload = {
+        "UPD": "04.09.2026, 11:24",
+        "OBJ": [
+            [
+                {
+                    "R": 1,
+                    "L": 3,
+                    "U": "/_/geo/ua/1.json",
+                    "A": [
+                        {
+                            "T": "",
+                            "D": "",
+                            "P": "06.09, 00:01 &mdash; 07.09, 23:58",
+                        }
+                    ],
+                }
+            ]
+        ],
+    }
+
+    _, warnings = parse_regional_weather_warnings(payload)
+
+    assert warnings[1][0].starts_at.isoformat() == "2026-09-06T00:01:00+03:00"
+    assert warnings[1][0].ends_at.isoformat() == "2026-09-07T23:58:00+03:00"
+
+
+def test_parse_regional_hydrology_warning_skips_basin_outlines() -> None:
+    payload = {
+        "UPD": "31.08.2026, 14:11",
+        "OBJ": [
+            [
+                {"R": "sb1", "L": "sb", "U": "/_/geo/ha/1.json", "A": ""},
+                {
+                    "R": 61,
+                    "L": "4_hb",
+                    "U": "/_/geo/hb/61.json",
+                    "A": [
+                        {
+                            "C": 4,
+                            "T": 6,
+                            "P": "04.09, 00:00 &mdash; 15.10, 00:00",
+                            "D": "Зниження рівнів води",
+                        }
+                    ],
+                },
+            ]
+        ],
+    }
+    lookup = 'const ATTNS_REGIONS = {"61": "Середній Дніпро"};'
+
+    updated_at, warnings = parse_regional_hydrology_warnings(payload, lookup)
+
+    assert updated_at.isoformat() == "2026-08-31T14:11:00+03:00"
+    warning = warnings[61][0]
+    assert warning.basin_name == "Середній Дніпро"
+    assert warning.danger_level == 4
+    assert warning.phenomenon == "Зниження рівнів води"
+    assert warning.ends_at.isoformat() == "2026-10-15T00:00:00+03:00"
+
+
+def test_parse_region_geometry_and_point_in_polygon() -> None:
+    geometry = parse_region_geometry(REGION_GEOMETRY_PAYLOAD)
+
+    assert point_in_region(30.5234, 50.4501, geometry)
+    assert not point_in_region(32.0, 50.4501, geometry)
 
 
 def _hourly_payload(
@@ -392,8 +531,14 @@ async def test_data_snapshot_keys_empty_forecast_by_caller_id() -> None:
             return {}
         if path == DAY_NIGHT_PATH:
             return ALERT_PAYLOAD
-        if path == REGIONAL_WEATHER_WARNINGS_PATH:
+        if path in (
+            REGIONAL_WEATHER_WARNINGS_PATH,
+            REGIONAL_FIRE_WARNINGS_PATH,
+            REGIONAL_SNOW_WARNINGS_PATH,
+        ):
             return WEATHER_WARNING_PAYLOAD
+        if path == "/_/geo/ua/1.json":
+            return REGION_GEOMETRY_PAYLOAD
         assert path == CITY_API_PATH
         assert params is not None
         return _hourly_payload(forecasts=[])
@@ -416,9 +561,7 @@ async def test_data_snapshot_keys_empty_forecast_by_caller_id() -> None:
 
 async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     client = UkrHMCClient(Mock())
-    client.async_get_stations = AsyncMock(
-        side_effect=AssertionError("station catalog must not be fetched")
-    )
+    client.async_get_stations = AsyncMock(return_value={STATION.station_id: STATION})
     client._async_get_lookups = AsyncMock(
         side_effect=AssertionError("station lookups must not be fetched")
     )
@@ -432,6 +575,14 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
     async def get_json(path, params=None):
         if path == DAY_NIGHT_PATH:
             return ALERT_PAYLOAD
+        if path in (
+            REGIONAL_WEATHER_WARNINGS_PATH,
+            REGIONAL_FIRE_WARNINGS_PATH,
+            REGIONAL_SNOW_WARNINGS_PATH,
+        ):
+            return WEATHER_WARNING_PAYLOAD
+        if path == "/_/geo/ua/1.json":
+            return REGION_GEOMETRY_PAYLOAD
         assert path == CITY_API_PATH
         assert params is not None
         return _hourly_payload()
@@ -443,7 +594,7 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
         include_station_data=False,
     )
 
-    assert snapshot.stations == {}
+    assert snapshot.stations == {STATION.station_id: STATION}
     assert snapshot.observations == {}
     assert snapshot.forecasts == {}
     assert snapshot.night_station_ids == set()
@@ -461,7 +612,7 @@ async def test_data_snapshot_can_skip_all_station_endpoints() -> None:
         .temperature_day
         == 30
     )
-    client.async_get_stations.assert_not_awaited()
+    client.async_get_stations.assert_awaited_once()
     client._async_get_lookups.assert_not_awaited()
     client.async_get_radiation_data.assert_not_awaited()
     client.async_get_hydrology_data.assert_not_awaited()
@@ -492,7 +643,16 @@ async def test_data_snapshot_can_include_only_radiation_data() -> None:
 
 async def test_data_snapshot_can_include_only_hydrology_data() -> None:
     client = UkrHMCClient(Mock())
-    client._get_json = AsyncMock(return_value=ALERT_PAYLOAD)
+    client._get_json = AsyncMock(
+        side_effect=lambda path, _params=None: (
+            ALERT_PAYLOAD
+            if path == DAY_NIGHT_PATH
+            else {"UPD": "04.09.2026, 12:00", "OBJ": []}
+        )
+    )
+    client._get_text = AsyncMock(
+        return_value='const ATTNS_REGIONS = {"61": "Середній Дніпро"};'
+    )
     client.async_get_hydrology_data = AsyncMock(
         return_value=(
             {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
@@ -509,6 +669,8 @@ async def test_data_snapshot_can_include_only_hydrology_data() -> None:
     assert snapshot.hydrology_observations[HYDROLOGY_POST.post_id] == (
         HYDROLOGY_OBSERVATION
     )
+    client._get_json.assert_any_await(HYDROLOGY_WARNINGS_PATH)
+    client._get_text.assert_awaited_once_with(HYDROLOGY_WARNING_LOOKUP_PATH)
 
 
 def test_parse_hourly_forecasts_preserves_provider_values() -> None:
@@ -632,6 +794,7 @@ def test_parse_night_station_ids() -> None:
         (parse_location_daily_forecasts, ({},)),
         (parse_alert_flags, ({},)),
         (parse_regional_weather_warnings, ({},)),
+        (parse_region_geometry, ({},)),
         (parse_night_station_ids, ({"dn": {"invalid": 1}},)),
     ],
 )
@@ -652,9 +815,12 @@ def test_data_snapshot_copies_input_mappings() -> None:
         radiation_observations=dict(DATA.radiation_observations),
         hydrology_posts=dict(DATA.hydrology_posts),
         hydrology_observations=dict(DATA.hydrology_observations),
+        snow_stations=dict(DATA.snow_stations),
+        snow_observations=dict(DATA.snow_observations),
         alert_flags=dict(DATA.alert_flags),
         weather_warnings_updated_at=DATA.weather_warnings_updated_at,
         regional_weather_warnings=dict(DATA.regional_weather_warnings),
+        location_region_ids=dict(DATA.location_region_ids),
     )
 
     stations.clear()

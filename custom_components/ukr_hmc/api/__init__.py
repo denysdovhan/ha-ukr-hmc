@@ -8,6 +8,7 @@ from .models import (
     UkrHMCHourlyForecast,
     UkrHMCHydrologyObservation,
     UkrHMCHydrologyPost,
+    UkrHMCHydrologyWarning,
     UkrHMCLocationForecast,
     UkrHMCLocationForecastDay,
     UkrHMCLocationForecastRequest,
@@ -15,10 +16,13 @@ from .models import (
     UkrHMCObservation,
     UkrHMCRadiationObservation,
     UkrHMCRadiationStation,
+    UkrHMCSnowObservation,
+    UkrHMCSnowStation,
     UkrHMCStation,
     UkrHMCWeatherWarning,
     UkrHMCWind,
 )
+from .parsers import parse_regional_hazard_warnings
 
 __all__ = [
     "UkrHMCClient",
@@ -30,6 +34,7 @@ __all__ = [
     "UkrHMCHourlyForecast",
     "UkrHMCHydrologyObservation",
     "UkrHMCHydrologyPost",
+    "UkrHMCHydrologyWarning",
     "UkrHMCLocationForecast",
     "UkrHMCLocationForecastDay",
     "UkrHMCLocationForecastRequest",
@@ -37,7 +42,10 @@ __all__ = [
     "UkrHMCObservation",
     "UkrHMCRadiationObservation",
     "UkrHMCRadiationStation",
+    "UkrHMCSnowObservation",
+    "UkrHMCSnowStation",
     "UkrHMCStation",
     "UkrHMCWeatherWarning",
     "UkrHMCWind",
+    "parse_regional_hazard_warnings",
 ]

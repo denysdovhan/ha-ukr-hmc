@@ -10,10 +10,16 @@ DAY_NIGHT_PATH: Final = "/_/_e5m.json"
 FORECAST_PATH: Final = "/_/m/prognoz.js"
 HYDROLOGY_DATA_PATH: Final = "/_/m/hydroday.js"
 HYDROLOGY_POST_CATALOG_PATH: Final = "/ua/_hydro-posts.js"
+HYDROLOGY_WARNINGS_PATH: Final = "/ua/_attns-hydro.json"
+HYDROLOGY_WARNING_LOOKUP_PATH: Final = "/ua/_attns-hydro.js"
 ICON_LOOKUP_PATH: Final = "/ua/_meteo-icons.js"
 RADIATION_DATA_PATH: Final = "/_/m/radioday.js"
 RADIATION_STATION_CATALOG_PATH: Final = "/ua/_radio-posts.js"
+SNOW_DATA_PATH: Final = "/_/m/snigost.js"
+SNOW_STATION_CATALOG_PATH: Final = "/ua/_attns-snigo.js"
 REGIONAL_WEATHER_WARNINGS_PATH: Final = "/ua/_attns-meteo.json"
+REGIONAL_FIRE_WARNINGS_PATH: Final = "/ua/_attns-fire.json"
+REGIONAL_SNOW_WARNINGS_PATH: Final = "/ua/_attns-snigolav.json"
 STATION_CATALOG_PATH: Final = "/ua/_meteo-stations.js"
 WIND_LOOKUP_PATH: Final = "/ua/_meteo-winds.js"
 
@@ -35,6 +41,7 @@ HYDROLOGY_POSTS_VARIABLE: Final = "HYDRO_POSTS"
 REGIONS_VARIABLE: Final = "METEO_OBLASTI"
 STATIONS_VARIABLE: Final = "METEO_STATIONS"
 WINDS_VARIABLE: Final = "METEO_WINDS"
+SNOW_STATIONS_VARIABLE: Final = "ATTNS_STANTIONS"
 
 # Station record keys.
 STATION_ID_KEY: Final = "i"
@@ -70,6 +77,20 @@ HYDROLOGY_WATER_LEVEL_CHANGE_KEY: Final = "C_FR"
 HYDROLOGY_WATER_TEMPERATURE_KEY: Final = "TW"
 HYDROLOGY_LEVEL_CLASS_KEY: Final = "L"
 HYDROLOGY_OBSERVATION_HOUR: Final = 8
+
+# Snow/avalanche station record and observation keys.
+SNOW_STATION_COORDINATES_KEY: Final = "G"
+SNOW_STATION_NAME_KEY: Final = "T"
+SNOW_OBSERVATION_STATION_KEY: Final = "ST"
+SNOW_OBSERVATION_TEMPERATURE_KEY: Final = "TT"
+SNOW_OBSERVATION_DEPTH_KEY: Final = "SN"
+SNOW_OBSERVATION_DEPTH_CHANGE_KEY: Final = "SD"
+SNOW_OBSERVATION_WIND_DIRECTION_KEY: Final = "WD"
+SNOW_OBSERVATION_WIND_SPEED_KEY: Final = "WS"
+SNOW_OBSERVATION_HUMIDITY_KEY: Final = "VL"
+SNOW_OBSERVATION_CLOUDINESS_KEY: Final = "HT"
+SNOW_OBSERVATION_PHENOMENA_KEY: Final = "OT"
+SNOW_STATION_WITHOUT_WIND_ID: Final = 11
 
 # Wind record keys and bearings.
 WIND_ABBREVIATION_KEY: Final = "r"
@@ -170,6 +191,7 @@ WEATHER_WARNING_ALERTS_KEY: Final = "A"
 WEATHER_WARNING_CODE_KEY: Final = "T"
 WEATHER_WARNING_PERIOD_KEY: Final = "P"
 WEATHER_WARNING_DESCRIPTION_KEY: Final = "D"
+WEATHER_WARNING_GEOMETRY_PATH_KEY: Final = "U"
 
 # Provider enum values.
 CLOUD_CONDITION_SELECTOR: Final = 0

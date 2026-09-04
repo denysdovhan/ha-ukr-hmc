@@ -19,6 +19,7 @@ from .fixtures import (
     LOCATION_FORECAST_REQUEST,
     LOCATION_SUBENTRY_DATA,
     RADIATION_SUBENTRY_DATA,
+    SNOW_SUBENTRY_DATA,
     STATION_SUBENTRY_DATA,
 )
 
@@ -35,6 +36,7 @@ async def test_coordinator_returns_provider_snapshot(hass: HomeAssistant) -> Non
             LOCATION_SUBENTRY_DATA,
             RADIATION_SUBENTRY_DATA,
             HYDROLOGY_SUBENTRY_DATA,
+            SNOW_SUBENTRY_DATA,
         ],
     )
     api = AsyncMock()
@@ -50,6 +52,7 @@ async def test_coordinator_returns_provider_snapshot(hass: HomeAssistant) -> Non
         include_station_data=True,
         include_radiation_data=True,
         include_hydrology_data=True,
+        include_snow_data=True,
     )
 
 
@@ -71,6 +74,7 @@ async def test_location_only_coordinator_skips_station_data(
         include_station_data=False,
         include_radiation_data=False,
         include_hydrology_data=False,
+        include_snow_data=False,
     )
 
 
@@ -92,6 +96,7 @@ async def test_station_only_coordinator_includes_station_data(
         include_station_data=True,
         include_radiation_data=False,
         include_hydrology_data=False,
+        include_snow_data=False,
     )
 
 
@@ -113,6 +118,7 @@ async def test_radiation_only_coordinator_skips_weather_data(
         include_station_data=False,
         include_radiation_data=True,
         include_hydrology_data=False,
+        include_snow_data=False,
     )
 
 
@@ -134,6 +140,7 @@ async def test_hydrology_only_coordinator_skips_other_data(
         include_station_data=False,
         include_radiation_data=False,
         include_hydrology_data=True,
+        include_snow_data=False,
     )
 
 

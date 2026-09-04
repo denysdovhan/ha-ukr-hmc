@@ -21,6 +21,7 @@ from .const import (
     MANUFACTURER,
     NAME,
     STALE_DATA_AFTER,
+    SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
 )
 from .coordinator import UkrHMCCoordinator
@@ -43,10 +44,7 @@ ALERT_FLAGS: tuple[BinarySensorEntityDescription, ...] = tuple(
     )
     for key, category in (
         ("attns_meteo", "weather"),
-        ("attns_hydro", "hydrology"),
-        ("attns_snigo", "snow"),
         ("attns_radio", "radiation"),
-        ("attns_fire", "fire"),
     )
 )
 
@@ -86,20 +84,25 @@ class UkrHMCRegionalWeatherWarningBinarySensor(UkrHMCEntity, BinarySensorEntity)
 
     @property
     def _warnings(self) -> tuple[UkrHMCWeatherWarning, ...]:
-        station = self.coordinator.data.stations.get(self._station_id)
-        if station is None:
+        region_id = self._region_id
+        if region_id is None:
             return ()
-        return self.coordinator.data.regional_weather_warnings.get(
-            station.region_id, ()
-        )
+        return self.coordinator.data.regional_weather_warnings.get(region_id, ())
+
+    @property
+    def _region_id(self) -> int | None:
+        station = self.coordinator.data.stations.get(self._station_id)
+        if station is not None:
+            return station.region_id
+        return self.coordinator.data.location_region_ids.get(self._subentry.subentry_id)
 
     @property
     @override
     def available(self) -> bool:
         """Return whether the station catalog and latest snapshot are available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data.stations.get(self._station_id) is not None
+        return self.coordinator.last_update_success and (
+            self._station_id is None
+            or self.coordinator.data.stations.get(self._station_id) is not None
         )
 
     @property
@@ -113,7 +116,15 @@ class UkrHMCRegionalWeatherWarningBinarySensor(UkrHMCEntity, BinarySensorEntity)
     @override
     def extra_state_attributes(self) -> dict[str, object]:
         """Return warning severity, text, codes, and validity intervals."""
-        station = self.coordinator.data.stations.get(self._station_id)
+        region_id = self._region_id
+        station = next(
+            (
+                station
+                for station in self.coordinator.data.stations.values()
+                if station.region_id == region_id
+            ),
+            None,
+        )
         warnings = self._warnings
         now = datetime.now(UTC)
         active_warnings = tuple(
@@ -136,6 +147,7 @@ class UkrHMCRegionalWeatherWarningBinarySensor(UkrHMCEntity, BinarySensorEntity)
         )
         return {
             "region": station.region_name if station else None,
+            "region_id": region_id,
             "level": level,
             "level_name": WARNING_LEVEL_NAMES.get(level, "none"),
             "active_count": len(active_warnings),
@@ -320,7 +332,10 @@ async def async_setup_entry(
         ]
     )
     for subentry in config_entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_WEATHER_STATION:
+        if subentry.subentry_type not in (
+            SUBENTRY_TYPE_WEATHER_STATION,
+            SUBENTRY_TYPE_WEATHER_LOCATION,
+        ):
             continue
         async_add_entities(
             [UkrHMCRegionalWeatherWarningBinarySensor(coordinator, subentry)],

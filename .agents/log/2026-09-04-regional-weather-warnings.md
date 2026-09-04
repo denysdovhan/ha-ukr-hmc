@@ -28,8 +28,13 @@ related_paths:
 - Expose a companion enum sensor with stable `none`, `yellow`, `orange`, and
   `red` states representing the highest active warning level.
 - Do not create unstable per-warning entities.
-- Do not infer an oblast for exact map locations because their forecast response
-  does not publish a reliable region id.
+- Resolve exact map locations only against official GeoJSON polygons referenced
+  by currently published regional warnings. Support Polygon, MultiPolygon, and
+  interior rings, and cache downloaded geometry. Do not infer regions by nearest
+  station.
+- Create the same problem and enum warning sensors for weather-location
+  subentries. If no published warning polygon contains the point, keep both
+  sensors available and inactive.
 
 ## Verification
 
@@ -38,4 +43,4 @@ related_paths:
 - [x] Home Assistant-independent parser smoke test passes with the verified live
       payload shape.
 - [x] Full Home Assistant test suite passes under WSL with Python 3.14.2:
-      `91 passed`.
+      `94 passed` after exact-location polygon support.

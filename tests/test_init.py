@@ -87,11 +87,17 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
         _entity_id(registry, f"location-subentry-{key}")
     weather_entity_id = _entity_id(registry, "station-subentry", "weather")
     temperature_entity_id = _entity_id(registry, "station-subentry-temperature")
+    station_apparent_temperature_entity_id = _entity_id(
+        registry, "station-subentry-apparent_temperature"
+    )
     condition_entity_id = _entity_id(registry, "station-subentry-condition")
     weather_description_entity_id = _entity_id(registry, "station-subentry-weather")
     location_weather_entity_id = _entity_id(registry, "location-subentry", "weather")
     location_temperature_entity_id = _entity_id(
         registry, "location-subentry-temperature"
+    )
+    location_apparent_temperature_entity_id = _entity_id(
+        registry, "location-subentry-apparent_temperature"
     )
     location_condition_entity_id = _entity_id(registry, "location-subentry-condition")
     location_weather_description_entity_id = _entity_id(
@@ -109,6 +115,27 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
         "station-subentry-forecast_details",
     ):
         _entity_id(registry, unique_id)
+    for subentry_id in ("station-subentry", "location-subentry"):
+        _entity_id(registry, f"{subentry_id}-warning_calendar", "calendar")
+        _entity_id(registry, f"{subentry_id}-regional_fire_danger_level")
+        _entity_id(registry, f"{subentry_id}-regional_snow_danger_level")
+        for warning_type in ("meteorological", "fire", "avalanche"):
+            _entity_id(
+                registry,
+                f"{subentry_id}-{warning_type}-warning-event",
+                "event",
+            )
+    _entity_id(registry, "hydrology-subentry-hydrology_warning_level")
+    _entity_id(
+        registry,
+        "hydrology-subentry-hydrology_warning_calendar",
+        "calendar",
+    )
+    _entity_id(
+        registry,
+        "hydrology-subentry-hydrology-warning-event",
+        "event",
+    )
     radiation_exposure_dose_rate_entity_id = _entity_id(
         registry,
         "radiation-subentry-exposure_dose_rate",
@@ -160,12 +187,14 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
     )
     assert hass.states.get(weather_entity_id).state == "partlycloudy"
     assert hass.states.get(temperature_entity_id).state == "25.9"
+    assert hass.states.get(station_apparent_temperature_entity_id).state == "24.0"
     assert hass.states.get(condition_entity_id).state == "partlycloudy"
     assert hass.states.get(weather_description_entity_id).state == (
         "Хмарно з проясненнями"
     )
     assert hass.states.get(location_weather_entity_id).state == "clear-night"
     assert hass.states.get(location_temperature_entity_id).state == "20"
+    assert hass.states.get(location_apparent_temperature_entity_id).state == "18.6"
     assert hass.states.get(location_condition_entity_id).state == "clear-night"
     assert hass.states.get(location_weather_description_entity_id).state == "Ясно"
     assert hass.states.get(location_wind_compass_entity_id).state == "NW"
@@ -191,6 +220,22 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
     assert (
         hass.states.get(
             _entity_id(registry, "station-subentry-regional_weather_warning_level")
+        ).state
+        == "yellow"
+    )
+    assert (
+        hass.states.get(
+            _entity_id(
+                registry,
+                "location-subentry-regional_weather_warning",
+                "binary_sensor",
+            )
+        ).state
+        == "on"
+    )
+    assert (
+        hass.states.get(
+            _entity_id(registry, "location-subentry-regional_weather_warning_level")
         ).state
         == "yellow"
     )

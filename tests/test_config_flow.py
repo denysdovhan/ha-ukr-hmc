@@ -22,6 +22,7 @@ from custom_components.ukr_hmc.const import (
     NAME,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
+    SUBENTRY_TYPE_SNOW_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
     SUBENTRY_TYPES,
@@ -37,6 +38,8 @@ from .fixtures import (
     SECOND_HYDROLOGY_POST,
     SECOND_RADIATION_STATION,
     SECOND_STATION,
+    SNOW_OBSERVATION,
+    SNOW_STATION,
     STATION,
 )
 
@@ -88,6 +91,12 @@ async def test_config_flow_opens_selected_subentry(
             {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
         )
     )
+    get_snow_data = AsyncMock(
+        return_value=(
+            {SNOW_STATION.station_id: SNOW_STATION},
+            {SNOW_STATION.station_id: SNOW_OBSERVATION},
+        )
+    )
     with (
         patch(
             "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_stations",
@@ -100,6 +109,10 @@ async def test_config_flow_opens_selected_subentry(
         patch(
             "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_hydrology_data",
             new=get_hydrology_data,
+        ),
+        patch(
+            "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_snow_data",
+            new=get_snow_data,
         ),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -121,6 +134,9 @@ async def test_config_flow_opens_selected_subentry(
     )
     assert get_hydrology_data.await_count == (
         1 if subentry_type == SUBENTRY_TYPE_HYDROLOGY_POST else 0
+    )
+    assert get_snow_data.await_count == (
+        1 if subentry_type == SUBENTRY_TYPE_SNOW_STATION else 0
     )
 
 

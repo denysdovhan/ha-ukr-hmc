@@ -361,6 +361,20 @@ omitted from the snapshot has no received data.
 }
 ```
 
+### Radiological warning map (not suitable for integration)
+
+- Page: `https://www.meteo.gov.ua/ua/Radiolohichni-poperedzhennya`
+- Map feed: `https://www.meteo.gov.ua/ua/_attns-radio.json`
+- Lookup: `https://www.meteo.gov.ua/ua/_attns-radio.js`
+- Geometry: `https://www.meteo.gov.ua/_/geo/rr/{zone_id}.json`
+
+Live verification on 2026-09-04 found that the feed reports `UPD` as
+`30.06.2023, 14:30`. It describes fixed 10, 30, and 100 km nuclear-power-plant
+zones. The only non-empty alerts are historical/baseline colour categories for
+the Chornobyl exclusion zones; their `B`, `E`, and `D` fields are empty. The
+feed therefore provides no current warning text or validity interval and must
+not replace the live global `attns_radio` flag.
+
 ### Snow/avalanche station data
 
 - URL: `https://www.meteo.gov.ua/_/m/snigost.js`
@@ -372,12 +386,17 @@ omitted from the snapshot has no received data.
 - `ST` (number): station id
 - `TT` (number): air temperature °C
 - `SN` (number): snow cover height (cm)
-- `SD` (number): snow density (unknown units)
+- `SD` (number): change in snow-cover height (cm); positive means an
+  increase, negative means a decrease, and zero means unchanged
 - `WD` (number): wind direction code
 - `WS` (number): wind speed
 - `VL` (number): humidity %
 - `HT` (string): cloudiness (UA)
 - `OT` (string): phenomena (UA)
+
+The official map renderer confirms that `SD` is the change in height, not snow
+density. This feed does not publish snow density, a separate snow-surface field,
+or an observation time. Key `0` provides only the shared observation date.
 
 **Sample**
 
@@ -446,6 +465,9 @@ The `.js` extension does not mean you must evaluate JavaScript. The body is plai
   rows. Use the exact current-hour `fulldata` record for location current
   values and its 03:00/15:00 records for daily forecasts.
 - Sunrise/sunset are provided per observation/forecast.
+- Apparent temperature is not published directly. The integration derives it
+  with the Steadman shade approximation from temperature, relative humidity,
+  and wind speed; solar radiation is not included.
 - Wind direction codes require `METEO_WINDS` mapping.
 - Icon/condition text can be derived from `METEO_ICONS_TITLES` + `TX` and `IT`.
 
@@ -458,6 +480,36 @@ The `.js` extension does not mean you must evaluate JavaScript. The body is plai
   phenomenon code, `P` for the validity interval, and `D` for description.
   The integration joins `R` to the physical station catalog's oblast id and
   preserves every warning instead of relying on the map polygon URL.
+- The warning record's `U` value points to official oblast GeoJSON such as
+  `/_/geo/ua/1.json`. Live verification on 2026-09-04 found a
+  `GeometryCollection` containing either `Polygon` or `MultiPolygon` geometry.
+  Coordinates use GeoJSON longitude/latitude order. The integration downloads
+  only polygons referenced by currently published warnings and caches them for
+  exact-location containment checks.
+
+### Fire and avalanche warning feeds
+
+- `/ua/_attns-fire.json` uses the same warning structure as the meteorological
+  feed. On 2026-09-04 it published up to six daily groups, oblast GeoJSON paths,
+  category `3` (extreme danger), category `4` (prolonged extreme danger), and
+  exact local validity periods. Multi-day periods may include a second date such
+  as `06.09, 00:01 — 07.09, 23:58`.
+- `/ua/_attns-snigolav.json` uses the same structure and the official avalanche
+  scale from level 1 (low) through level 5 (very high). The feed was valid but
+  empty on 2026-09-04, which is normal outside active avalanche conditions.
+
+### Hydrological warning feed
+
+- `/ua/_attns-hydro.json` publishes official basin/subbasin polygons, warning
+  text, phenomenon code, map level, and local validity period. Non-warning
+  basin-outline records use string region ids such as `sb1` and an empty `A`;
+  they must not become warnings.
+- Active areas use `/_/geo/hb/{id}.json`. The configured hydrology post is
+  matched by its catalog coordinates, not by fuzzy river-name comparison.
+- Map levels `1_hb`, `2_hb`, and `3_hb` are danger levels I–III. `4_hb` is the
+  distinct brown III-level low-water category shown in the official legend.
+- Phenomenon code `T` maps to: 1 rising water levels, 2 ice phenomena, 3 rapid
+  floods, 4 waves/wind setup, 5 mudflows, and 6 falling water levels.
 
 - `/_/m/hydroday.js?4` appears to return the **same JSON** as `/_/m/hydroday.js?75` (at least on 2026‑02‑02). The numeric query likely selects a layer or map scope, but both returned identical data in this probe.
 - On 2026-08-06, the hydrology catalog contained 237 posts, while the daily

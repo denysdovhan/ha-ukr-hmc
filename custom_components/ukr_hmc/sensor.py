@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from math import exp
 from typing import TYPE_CHECKING, Any, override
 from zoneinfo import ZoneInfo
 
@@ -36,8 +37,10 @@ from .const import (
     MANUFACTURER,
     NAME,
     RADIATION_CONFIGURATION_URL,
+    SNOW_CONFIGURATION_URL,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
+    SUBENTRY_TYPE_SNOW_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
 )
@@ -46,7 +49,7 @@ from .entity import UkrHMCEntity
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import time
+    from datetime import date, time
 
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
@@ -57,9 +60,11 @@ if TYPE_CHECKING:
         UkrHMCForecastDay,
         UkrHMCHourlyForecast,
         UkrHMCHydrologyObservation,
+        UkrHMCHydrologyWarning,
         UkrHMCLocationForecast,
         UkrHMCObservation,
         UkrHMCRadiationObservation,
+        UkrHMCSnowObservation,
     )
     from .data import UkrHMCConfigEntry
 
@@ -86,7 +91,15 @@ class UkrHMCHydrologySensorDescription(SensorEntityDescription):
     value_fn: Callable[[UkrHMCHydrologyObservation], StateType | datetime]
 
 
+@dataclass(frozen=True, kw_only=True)
+class UkrHMCSnowSensorDescription(SensorEntityDescription):
+    """Describe a snow-station sensor."""
+
+    value_fn: Callable[[UkrHMCSnowObservation], StateType | date]
+
+
 WARNING_LEVEL_OPTIONS = ("none", "yellow", "orange", "red")
+MAX_RELATIVE_HUMIDITY = 100
 WARNING_LEVEL_NAMES = {1: "yellow", 2: "orange", 3: "red"}
 REGIONAL_WEATHER_WARNING_LEVEL_SENSOR = SensorEntityDescription(
     key="regional_weather_warning_level",
@@ -94,6 +107,123 @@ REGIONAL_WEATHER_WARNING_LEVEL_SENSOR = SensorEntityDescription(
     device_class=SensorDeviceClass.ENUM,
     options=list(WARNING_LEVEL_OPTIONS),
 )
+FIRE_DANGER_OPTIONS = ("none", "extreme", "prolonged_extreme")
+FIRE_DANGER_NAMES = {3: "extreme", 4: "prolonged_extreme"}
+SNOW_DANGER_OPTIONS = (
+    "none",
+    "low",
+    "moderate",
+    "considerable",
+    "high",
+    "very_high",
+)
+SNOW_DANGER_NAMES = {
+    1: "low",
+    2: "moderate",
+    3: "considerable",
+    4: "high",
+    5: "very_high",
+}
+
+
+class UkrHMCRegionalHazardLevelSensor(UkrHMCEntity, SensorEntity):
+    """Expose the current fire or avalanche danger level."""
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+        *,
+        hazard: str,
+    ) -> None:
+        """Initialize a regional hazard sensor."""
+        super().__init__(coordinator, subentry)
+        self._hazard = hazard
+        options = FIRE_DANGER_OPTIONS if hazard == "fire" else SNOW_DANGER_OPTIONS
+        self.entity_description = SensorEntityDescription(
+            key=f"regional_{hazard}_danger_level",
+            translation_key=f"regional_{hazard}_danger_level",
+            device_class=SensorDeviceClass.ENUM,
+            options=list(options),
+        )
+        self._attr_unique_id = f"{subentry.subentry_id}-{self.entity_description.key}"
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the source and latest snapshot are available."""
+        return self.coordinator.last_update_success and (
+            self._station_id is None
+            or self.coordinator.data.stations.get(self._station_id) is not None
+        )
+
+    def _region_id(self) -> int | None:
+        """Return the provider region containing this weather source."""
+        if self._hazard == "fire":
+            station = self.coordinator.data.stations.get(self._station_id)
+            return (
+                station.region_id
+                if station is not None
+                else self.coordinator.data.location_fire_region_ids.get(
+                    self._subentry.subentry_id
+                )
+            )
+        if self._station_id is not None:
+            return self.coordinator.data.station_snow_region_ids.get(self._station_id)
+        return self.coordinator.data.location_snow_region_ids.get(
+            self._subentry.subentry_id
+        )
+
+    @property
+    @override
+    def native_value(self) -> str:
+        """Return the highest currently active provider level."""
+        warnings = (
+            self.coordinator.data.regional_fire_warnings
+            if self._hazard == "fire"
+            else self.coordinator.data.regional_snow_warnings
+        ).get(self._region_id(), ())
+        level = max(
+            (
+                warning.danger_level
+                for warning in warnings
+                if warning.is_active(datetime.now(UTC))
+            ),
+            default=0,
+        )
+        names = FIRE_DANGER_NAMES if self._hazard == "fire" else SNOW_DANGER_NAMES
+        return names.get(level, "none")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return direct provider validity details for automations."""
+        region_id = self._region_id()
+        warnings = (
+            self.coordinator.data.regional_fire_warnings
+            if self._hazard == "fire"
+            else self.coordinator.data.regional_snow_warnings
+        ).get(region_id, ())
+        updated_at = (
+            self.coordinator.data.fire_warnings_updated_at
+            if self._hazard == "fire"
+            else self.coordinator.data.snow_warnings_updated_at
+        )
+        return {
+            "region_id": region_id,
+            "updated_at": updated_at.isoformat() if updated_at else None,
+            "warnings": [
+                {
+                    "level": warning.danger_level,
+                    "description": warning.description,
+                    "period": warning.period,
+                    "starts_at": warning.starts_at.isoformat()
+                    if warning.starts_at
+                    else None,
+                    "ends_at": warning.ends_at.isoformat() if warning.ends_at else None,
+                }
+                for warning in warnings
+            ],
+        }
 
 
 class UkrHMCRegionalWeatherWarningLevelSensor(UkrHMCEntity, SensorEntity):
@@ -114,9 +244,9 @@ class UkrHMCRegionalWeatherWarningLevelSensor(UkrHMCEntity, SensorEntity):
     @override
     def available(self) -> bool:
         """Return whether the station catalog and latest snapshot are available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data.stations.get(self._station_id) is not None
+        return self.coordinator.last_update_success and (
+            self._station_id is None
+            or self.coordinator.data.stations.get(self._station_id) is not None
         )
 
     @property
@@ -124,14 +254,21 @@ class UkrHMCRegionalWeatherWarningLevelSensor(UkrHMCEntity, SensorEntity):
     def native_value(self) -> str:
         """Return the highest currently active warning level."""
         station = self.coordinator.data.stations.get(self._station_id)
-        if station is None:
+        region_id = (
+            station.region_id
+            if station is not None
+            else self.coordinator.data.location_region_ids.get(
+                self._subentry.subentry_id
+            )
+        )
+        if region_id is None:
             return "none"
         now = datetime.now(UTC)
         level = max(
             (
                 warning.danger_level
                 for warning in self.coordinator.data.regional_weather_warnings.get(
-                    station.region_id, ()
+                    region_id, ()
                 )
                 if warning.is_active(now)
             ),
@@ -228,6 +365,44 @@ DATA_TIME_SENSOR = UkrHMCSensorDescription(
 )
 
 
+def apparent_temperature(
+    temperature: float,
+    humidity: float | None,
+    wind_speed: float | None,
+) -> float | None:
+    """Return Steadman apparent temperature in shade, without solar radiation."""
+    if (
+        humidity is None
+        or wind_speed is None
+        or not 0 <= humidity <= MAX_RELATIVE_HUMIDITY
+    ):
+        return None
+    vapour_pressure = (
+        humidity / 100 * 6.105 * exp(17.27 * temperature / (237.7 + temperature))
+    )
+    return round(temperature + 0.33 * vapour_pressure - 0.7 * wind_speed - 4, 1)
+
+
+APPARENT_TEMPERATURE_SENSOR = UkrHMCSensorDescription(
+    key="apparent_temperature",
+    translation_key="apparent_temperature",
+    device_class=SensorDeviceClass.TEMPERATURE,
+    native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=1,
+    station_value_fn=lambda observation, _: apparent_temperature(
+        observation.temperature,
+        observation.humidity,
+        observation.wind_speed,
+    ),
+    location_value_fn=lambda forecast: apparent_temperature(
+        forecast.temperature,
+        forecast.humidity,
+        forecast.wind_speed,
+    ),
+)
+
+
 def _observation_time_value(
     observation: UkrHMCObservation,
     value: time | None,
@@ -290,6 +465,7 @@ STATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     CONDITION_SENSOR,
     WEATHER_SENSOR,
     TEMPERATURE_SENSOR,
+    APPARENT_TEMPERATURE_SENSOR,
     HUMIDITY_SENSOR,
     PRESSURE_SENSOR,
     WIND_SPEED_SENSOR,
@@ -305,6 +481,7 @@ LOCATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     CONDITION_SENSOR,
     WEATHER_SENSOR,
     TEMPERATURE_SENSOR,
+    APPARENT_TEMPERATURE_SENSOR,
     HUMIDITY_SENSOR,
     WIND_SPEED_SENSOR,
     WIND_COMPASS_SENSOR,
@@ -462,6 +639,72 @@ RADIATION_SENSORS: tuple[UkrHMCRadiationSensorDescription, ...] = (
     ),
 )
 
+SNOW_SENSORS: tuple[UkrHMCSnowSensorDescription, ...] = (
+    UkrHMCSnowSensorDescription(
+        key="snow_depth",
+        translation_key="snow_depth",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda observation: observation.snow_depth,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="snow_depth_change",
+        translation_key="snow_depth_change",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda observation: observation.snow_depth_change,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda observation: observation.temperature,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="humidity",
+        translation_key="humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda observation: observation.humidity,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="wind_speed",
+        translation_key="wind_speed",
+        device_class=SensorDeviceClass.WIND_SPEED,
+        native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda observation: observation.wind_speed,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="wind_direction",
+        translation_key="wind_direction",
+        device_class=SensorDeviceClass.WIND_DIRECTION,
+        native_unit_of_measurement=DEGREE,
+        value_fn=lambda observation: observation.wind.bearing,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="cloudiness",
+        translation_key="cloudiness",
+        value_fn=lambda observation: observation.cloudiness or None,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="weather_phenomena",
+        translation_key="weather_phenomena",
+        value_fn=lambda observation: observation.phenomena or None,
+    ),
+    UkrHMCSnowSensorDescription(
+        key="observation_date",
+        translation_key="observation_date",
+        device_class=SensorDeviceClass.DATE,
+        value_fn=lambda observation: observation.observed_on,
+    ),
+)
+
 HYDROLOGY_LEVEL_STATES = (
     "calm",
     "floodplain_flooding",
@@ -469,6 +712,21 @@ HYDROLOGY_LEVEL_STATES = (
     "extreme_high",
     "dangerous_low",
 )
+HYDROLOGY_WARNING_LEVEL_STATES = (
+    "none",
+    "change_without_consequences",
+    "danger_level_1",
+    "danger_level_2",
+    "danger_level_3",
+    "danger_level_3_low_water",
+)
+HYDROLOGY_WARNING_LEVEL_NAMES = {
+    0: "change_without_consequences",
+    1: "danger_level_1",
+    2: "danger_level_2",
+    3: "danger_level_3",
+    4: "danger_level_3_low_water",
+}
 
 
 def _hydrological_situation(observation: UkrHMCHydrologyObservation) -> str | None:
@@ -867,11 +1125,145 @@ class UkrHMCHydrologySensor(UkrHMCEntity, SensorEntity):
         )
 
 
+class UkrHMCSnowSensor(UkrHMCEntity, SensorEntity):
+    """Represent one snow or mountain-weather value."""
+
+    entity_description: UkrHMCSnowSensorDescription
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+        description: UkrHMCSnowSensorDescription,
+    ) -> None:
+        """Initialize a snow-station sensor."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = description
+        self._snow_station_id = int(subentry.data[CONF_STATION_ID])
+        self._attr_unique_id = f"{subentry.subentry_id}-{description.key}"
+
+    @property
+    def snow_observation(self) -> UkrHMCSnowObservation | None:
+        """Return the latest snow-station observation."""
+        return self.coordinator.data.snow_observations.get(self._snow_station_id)
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the station has a current provider record."""
+        return (
+            self.coordinator.last_update_success and self.snow_observation is not None
+        )
+
+    @property
+    @override
+    def native_value(self) -> StateType | date | None:
+        """Return the current provider value."""
+        if (observation := self.snow_observation) is None:
+            return None
+        return self.entity_description.value_fn(observation)
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        """Return device information for this snow station."""
+        return DeviceInfo(
+            configuration_url=SNOW_CONFIGURATION_URL,
+            entry_type=DeviceEntryType.SERVICE,
+            identifiers={(DOMAIN, self._subentry.subentry_id)},
+            manufacturer=MANUFACTURER,
+            model=f"UkrHMC Snow Station {self._snow_station_id}",
+            name=self._subentry.title,
+        )
+
+
+class UkrHMCHydrologyWarningLevelSensor(UkrHMCHydrologySensor):
+    """Expose hydrological warning level for the selected post."""
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialize the hydrological warning sensor."""
+        super().__init__(
+            coordinator,
+            subentry,
+            UkrHMCHydrologySensorDescription(
+                key="hydrology_warning_level",
+                translation_key="hydrology_warning_level",
+                device_class=SensorDeviceClass.ENUM,
+                options=list(HYDROLOGY_WARNING_LEVEL_STATES),
+                value_fn=lambda _: None,
+            ),
+        )
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the post and latest snapshot are available."""
+        return self.coordinator.last_update_success and (
+            self.coordinator.data.hydrology_posts.get(self._post_id) is not None
+        )
+
+    @property
+    def warnings(self) -> tuple[UkrHMCHydrologyWarning, ...]:
+        """Return warnings for the post's official basin polygon."""
+        region_id = self.coordinator.data.hydrology_post_warning_region_ids.get(
+            self._post_id
+        )
+        return self.coordinator.data.regional_hydrology_warnings.get(region_id, ())
+
+    @property
+    @override
+    def native_value(self) -> str:
+        """Return the highest active hydrological warning level."""
+        level = max(
+            (
+                warning.danger_level
+                for warning in self.warnings
+                if warning.is_active(datetime.now(UTC))
+            ),
+            default=None,
+        )
+        return HYDROLOGY_WARNING_LEVEL_NAMES.get(level, "none")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return basin, river, warning text, and validity details."""
+        post = self.coordinator.data.hydrology_posts.get(self._post_id)
+        region_id = self.coordinator.data.hydrology_post_warning_region_ids.get(
+            self._post_id
+        )
+        updated_at = self.coordinator.data.hydrology_warnings_updated_at
+        return {
+            "river": post.river if post else None,
+            "basin": self.warnings[0].basin_name if self.warnings else None,
+            "region_id": region_id,
+            "updated_at": updated_at.isoformat() if updated_at else None,
+            "warnings": [
+                {
+                    "level": warning.danger_level,
+                    "phenomenon_code": warning.phenomenon_code,
+                    "phenomenon": warning.phenomenon,
+                    "text": warning.description,
+                    "period": warning.period,
+                    "starts_at": warning.starts_at.isoformat()
+                    if warning.starts_at
+                    else None,
+                    "ends_at": warning.ends_at.isoformat() if warning.ends_at else None,
+                }
+                for warning in self.warnings
+            ],
+        }
+
+
 SENSORS_BY_SUBENTRY_TYPE = {
     SUBENTRY_TYPE_WEATHER_STATION: (STATION_SENSORS, UkrHMCSensor),
     SUBENTRY_TYPE_WEATHER_LOCATION: (LOCATION_SENSORS, UkrHMCSensor),
     SUBENTRY_TYPE_RADIATION_STATION: (RADIATION_SENSORS, UkrHMCRadiationSensor),
     SUBENTRY_TYPE_HYDROLOGY_POST: (HYDROLOGY_SENSORS, UkrHMCHydrologySensor),
+    SUBENTRY_TYPE_SNOW_STATION: (SNOW_SENSORS, UkrHMCSnowSensor),
 }
 
 
@@ -905,6 +1297,12 @@ async def async_setup_entry(
                 [
                     UkrHMCForecastDetailsSensor(coordinator, subentry),
                     UkrHMCRegionalWeatherWarningLevelSensor(coordinator, subentry),
+                    UkrHMCRegionalHazardLevelSensor(
+                        coordinator, subentry, hazard="fire"
+                    ),
+                    UkrHMCRegionalHazardLevelSensor(
+                        coordinator, subentry, hazard="snow"
+                    ),
                 ],
                 config_subentry_id=subentry.subentry_id,
             )
@@ -914,5 +1312,22 @@ async def async_setup_entry(
                     UkrHMCLocationSummarySensor(coordinator, subentry, description)
                     for description in LOCATION_SUMMARY_SENSORS
                 ],
+                config_subentry_id=subentry.subentry_id,
+            )
+            async_add_entities(
+                [
+                    UkrHMCRegionalWeatherWarningLevelSensor(coordinator, subentry),
+                    UkrHMCRegionalHazardLevelSensor(
+                        coordinator, subentry, hazard="fire"
+                    ),
+                    UkrHMCRegionalHazardLevelSensor(
+                        coordinator, subentry, hazard="snow"
+                    ),
+                ],
+                config_subentry_id=subentry.subentry_id,
+            )
+        elif subentry.subentry_type == SUBENTRY_TYPE_HYDROLOGY_POST:
+            async_add_entities(
+                [UkrHMCHydrologyWarningLevelSensor(coordinator, subentry)],
                 config_subentry_id=subentry.subentry_id,
             )

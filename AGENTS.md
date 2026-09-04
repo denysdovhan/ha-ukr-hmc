@@ -41,9 +41,9 @@ forecasts, radiation measurements, and daily hydrology observations from
 `custom_components/ukr_hmc`.
 
 One integration config entry owns multiple typed subentries. Weather stations,
-exact forecast locations, radiation monitoring stations, and hydrology posts use
-separate subentry and device types. Keep future provider products in sibling
-types.
+exact forecast locations, radiation monitoring stations, hydrology posts, and
+snow/avalanche stations use separate subentry and device types. Keep future
+provider products in sibling types.
 
 ### Code structure
 
@@ -53,9 +53,11 @@ types.
   data models, and parsers. Keep it ready for extraction to a standalone package.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
-- `binary_sensor.py` - exposes API availability, stale-data diagnostics, and the
-  provider's five global attention flags once per config entry, plus regional
+- `binary_sensor.py` - exposes API availability, stale-data diagnostics, two
+  provider-global attention flags once per config entry, plus regional
   meteorological warnings for physical weather stations.
+- `calendar.py` - exposes timed meteorological, fire, and avalanche warnings as
+  one read-only calendar per configured weather source.
 - `config_flow.py` - creates the single service entry and typed weather,
   radiation, and hydrology subentries.
 - `const.py` - integration constants, subentry types, and the 15-minute update
@@ -63,11 +65,14 @@ types.
 - `coordinator.py` - fetches shared weather, radiation, and hydrology snapshots
   plus direct forecasts for configured map locations.
 - `data.py` - `UkrHMCRuntimeData` and the typed `UkrHMCConfigEntry` alias.
+- `diagnostics.py` - privacy-safe entry diagnostics with endpoint health and
+  aggregate record counts.
+- `event.py` - warning-transition event entities for automations.
 - `entity.py` - shared weather data access, availability, and device metadata.
 - `icons.json` - frontend icons for generic sensor types and canonical weather
   condition states.
 - `sensor.py` - weather, location forecast summaries, service diagnostics,
-  radiation, and hydrology sensor descriptions and entities.
+  radiation, hydrology, and snow-station sensor descriptions and entities.
 - `weather.py` - current weather plus forecast modes supported by each location
   type.
 - `translations/` - English and Ukrainian UI strings.
@@ -95,14 +100,21 @@ types.
 
 - Use one shared `UkrHMCClient` and one `UkrHMCCoordinator` per config entry.
 - Store both in `entry.runtime_data`; do not introduce globals or singleton state.
-- The coordinator downloads the global station, observation, forecast, lookup,
-  and day/night data once every 15 minutes when weather-station subentries need
-  it, the radiation catalog and snapshot when radiation-station subentries need
+- The coordinator downloads the station catalog for weather stations and exact
+  locations, and downloads global observation, forecast, lookup, and day/night
+  data once every 15 minutes when weather-station subentries need it. It fetches
+  the radiation catalog and snapshot when radiation-station subentries need
   them, the hydrology catalog and daily snapshot when hydrology-post subentries
   need them, plus one direct forecast for each weather-location subentry. Do not
   add per-location coordinators or duplicate global requests.
 - Entities read cached coordinator data only. Never perform I/O in entity
   properties or forecast callbacks.
+- Diagnostics use the cached snapshot and client request status only. Never make
+  diagnostic-only requests or include subentry data, titles, unique IDs,
+  coordinates, station IDs, or user-provided labels.
+- Warning event entities establish the first loaded snapshot as their baseline.
+  Emit only `started`, `level_increased`, and `ended` transitions after later
+  successful coordinator updates; never emit a false start during setup.
 - Convert provider failures to the appropriate Home Assistant coordinator or
   config-flow errors while preserving useful exception context.
 
@@ -112,9 +124,9 @@ types.
 - Use `weather_station` for physical stations and `weather_location` for exact
   point forecasts. Do not store a second weather-source discriminator.
 - Use `radiation_station` for radiation monitoring stations and
-  `hydrology_post` for daily river monitoring posts. Future provider products
-  should use explicit sibling types. Weather platforms must ignore non-weather
-  subentry types.
+  `hydrology_post` for daily river monitoring posts, and `snow_station` for
+  mountain snow observations. Future provider products should use explicit
+  sibling types. Weather platforms must ignore non-weather subentry types.
 - Weather-station subentries store a selected provider station ID.
 - Weather-location subentries store only their label, latitude, and longitude.
   Do not resolve or store a physical station for map locations.
@@ -136,6 +148,10 @@ types.
   temperature, humidity, current precipitation, wind speed, raw compass direction,
   mapped numeric wind direction, and data time. Do not create a current pressure sensor because the
   exact current-hour location record does not publish pressure.
+- Weather stations and exact locations expose a derived Steadman apparent
+  temperature using direct temperature, humidity, and wind speed. It represents
+  an adult in shade and excludes solar radiation; never present it as a provider
+  measurement.
 - Station current values come from physical observations. Location current
   values come from the exact current-hour `fulldata` record for the point.
 - Keep `condition` sensor states canonical for Home Assistant. Keep direct
@@ -159,7 +175,9 @@ types.
 - Weather stations expose sunrise and sunset timestamp sensors. Provider
   phenomenon and indicator codes are disabled-by-default diagnostic sensors.
 - Parse all five global `attns_*` flags from the day/night payload and expose
-  them once per config entry as problem-class binary sensors. They indicate only
+  weather and radiation once per config entry as problem-class binary sensors.
+  Keep hydrology, fire, and snow parsed for diagnostics but replace their entities
+  with detailed source-specific level sensors. Global flags indicate only
   provider-global attention and must not be described as regional warnings,
   because the payload has no region, severity, text, or validity interval.
 - Parse `/ua/_attns-meteo.json` as the distinct regional meteorological warning
@@ -167,7 +185,18 @@ types.
   problem binary sensor per station with severity, text, phenomenon code, and
   validity attributes, plus an enum sensor for the highest active danger level.
   Keep active/future counts and next validity boundaries automation-friendly.
-  Do not infer an oblast for exact map locations.
+  For exact map locations, resolve only against the official GeoJSON polygons
+  referenced by published warnings; cache geometry and never infer an oblast by
+  nearest station.
+- Parse `/ua/_attns-fire.json` and `/ua/_attns-snigolav.json` as regional fire
+  and avalanche danger feeds. Expose the official fire categories 3–4 and
+  avalanche levels 1–5 as enum sensors. Use referenced official polygons for
+  exact locations and avalanche-area matching. Include timed warnings from all
+  three feeds in a read-only calendar attached to each weather source.
+- Parse `/ua/_attns-hydro.json` and its official basin-name lookup. Match
+  configured hydrology-post coordinates against warning polygons and expose the
+  direct map level, river, basin, phenomenon, text, and validity period. Add a
+  read-only warning calendar to each hydrology post.
 - The wind-direction sensor exposes degrees with the native wind-direction device
   class. For location current values, map the direct `WindCompass8` value through
   the provider bearing mapping and also expose the raw compass value separately.
@@ -175,6 +204,10 @@ types.
 - Radiation stations expose the provider's direct `VR` value in µR/h and `VZ`
   value in nSv/h, plus their observation time. Do not convert one measurement
   into the other.
+- Do not use `/ua/_attns-radio.json` as a current regional-warning source. Live
+  verification on 2026-09-04 found it frozen at 30.06.2023 with fixed NPP zones
+  and empty warning text/start/end fields. Retain the live global `attns_radio`
+  flag unless UkrHMC publishes a maintained detailed source.
 - Do not expose a derived dose-level entity until Home Assistant has a suitable
   way to present the provider map colors without misleading history colors.
 - Point radiation devices to the provider's `#RADIO` page; keep weather devices
@@ -192,6 +225,11 @@ types.
   selector. Missing records make existing entities unavailable; `TW = 0` is a
   valid water temperature.
 - Point hydrology devices to the provider's daily hydrological situation page.
+- Snow stations expose direct `snigost.js` snow depth and signed depth change in
+  cm, temperature, humidity, wind, cloudiness, phenomena, and observation date.
+  `SD` is not density. The feed has no density, surface-state, or exact-time
+  field; do not infer them. Suppress wind for station 11 as the official renderer
+  does. Point devices to the provider snow/avalanche situation page.
 
 ## Provider data
 
@@ -201,6 +239,7 @@ Current supported endpoints are:
 - `/_/m/prognoz.js` - forecasts for all stations.
 - `/_/m/radioday.js` - latest radiation measurements for available stations.
 - `/_/m/hydroday.js` - daily hydrology observations for available posts.
+- `/_/m/snigost.js` - dated snow and mountain-weather observations.
 - `/fmi.json?action=getCityWeather` - direct location forecast values using a
   non-empty label and `latlon`; `dataDetailed` supplies upcoming hourly values,
   while `fulldata` supplies the current-hour record and daily-card records.
@@ -208,8 +247,16 @@ Current supported endpoints are:
 - `/ua/_meteo-stations.js` - region and physical-station catalog.
 - `/ua/_radio-posts.js` - radiation monitoring station catalog.
 - `/ua/_hydro-posts.js` - hydrology post and river catalog.
+- `/ua/_attns-snigo.js` - snow/avalanche station names and coordinates.
 - `/ua/_attns-meteo.json` - regional meteorological warnings with danger level,
   text, phenomenon code, and validity interval.
+- `/ua/_attns-fire.json` - oblast fire-danger categories and validity periods.
+- `/ua/_attns-snigolav.json` - Carpathian avalanche-area levels and validity
+  periods.
+- `/ua/_attns-hydro.json` - basin-area hydrological warnings, phenomenon codes,
+  danger levels, text, and validity periods.
+- `/_/geo/ua/{region_id}.json` - GeoJSON Polygon or MultiPolygon referenced by
+  regional warnings and used to match configured exact locations.
 - `/ua/_meteo-icons.js` and `/ua/_meteo-winds.js` - condition and wind lookups.
 
 The `.js` endpoints contain JSON or JSON-compatible assignments despite their
@@ -217,16 +264,15 @@ extension and content type. Bare requests have returned HTTP 403 during live
 validation; preserve the honest browser-like user agent and meteo.gov.ua referer
 in `api/const.py`, and re-verify live behavior before changing request logic.
 
-Treat the automatic hydrology, snow, and avalanche endpoints documented
-in `meteo.md` as research only. They are outside the implemented scope unless
-the user explicitly expands it. Use `Europe/Kyiv` for provider-local dates and
-times.
+Treat other automatic hydrology, snow, and avalanche endpoints documented in
+`meteo.md` as research only. They are outside the implemented scope unless the
+user explicitly expands it. Use `Europe/Kyiv` for provider-local dates and times.
 
 ## Configuration and translations
 
 - Keep config-entry setup in the UI; do not add YAML configuration.
-- Preserve all four subentry types: physical weather station, map location,
-  radiation monitoring station, and hydrology post.
+- Preserve all five subentry types: physical weather station, map location,
+  radiation monitoring station, hydrology post, and snow/avalanche station.
 - Edit `translations/en.json` and `translations/uk.json` together when UI keys
   change. Translate values only and keep JSON keys aligned.
 - Use the full official organization name in integration titles, manifest

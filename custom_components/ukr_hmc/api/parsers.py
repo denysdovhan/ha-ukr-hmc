@@ -92,6 +92,19 @@ from .const import (
     RADIATION_STATIONS_VARIABLE,
     RADIATION_TIME_KEY,
     REGIONS_VARIABLE,
+    SNOW_OBSERVATION_CLOUDINESS_KEY,
+    SNOW_OBSERVATION_DEPTH_CHANGE_KEY,
+    SNOW_OBSERVATION_DEPTH_KEY,
+    SNOW_OBSERVATION_HUMIDITY_KEY,
+    SNOW_OBSERVATION_PHENOMENA_KEY,
+    SNOW_OBSERVATION_STATION_KEY,
+    SNOW_OBSERVATION_TEMPERATURE_KEY,
+    SNOW_OBSERVATION_WIND_DIRECTION_KEY,
+    SNOW_OBSERVATION_WIND_SPEED_KEY,
+    SNOW_STATION_COORDINATES_KEY,
+    SNOW_STATION_NAME_KEY,
+    SNOW_STATION_WITHOUT_WIND_ID,
+    SNOW_STATIONS_VARIABLE,
     STATION_ALTITUDE_KEY,
     STATION_ID_KEY,
     STATION_LATITUDE_KEY,
@@ -104,6 +117,7 @@ from .const import (
     WEATHER_WARNING_ALERTS_KEY,
     WEATHER_WARNING_CODE_KEY,
     WEATHER_WARNING_DESCRIPTION_KEY,
+    WEATHER_WARNING_GEOMETRY_PATH_KEY,
     WEATHER_WARNING_LEVEL_KEY,
     WEATHER_WARNING_PERIOD_KEY,
     WEATHER_WARNING_REGION_KEY,
@@ -119,11 +133,14 @@ from .models import (
     UkrHMCHourlyForecast,
     UkrHMCHydrologyObservation,
     UkrHMCHydrologyPost,
+    UkrHMCHydrologyWarning,
     UkrHMCLocationForecastDay,
     UkrHMCLookups,
     UkrHMCObservation,
     UkrHMCRadiationObservation,
     UkrHMCRadiationStation,
+    UkrHMCSnowObservation,
+    UkrHMCSnowStation,
     UkrHMCStation,
     UkrHMCWeatherWarning,
     UkrHMCWind,
@@ -136,11 +153,24 @@ STATION_CATALOG_PATTERN = re.compile(
     re.DOTALL,
 )
 WEATHER_WARNING_PERIOD_PATTERN = re.compile(
-    r"(?P<day>\d{2})\.(?P<month>\d{2})\s+"
-    r"(?P<start>\d{2}:\d{2})\s*[—–-]\s*(?P<end>\d{2}:\d{2})"
+    r"(?P<day>\d{2})\.(?P<month>\d{2}),?\s+"
+    r"(?P<start>\d{2}:\d{2})\s*[—–-]\s*"
+    r"(?:(?P<end_day>\d{2})\.(?P<end_month>\d{2}),?\s+)?"
+    r"(?P<end>\d{2}:\d{2})"
 )
 JANUARY = 1
 DECEMBER = 12
+HYDROLOGY_WARNING_REGIONS_PATTERN = re.compile(
+    r"const ATTNS_REGIONS\s*=\s*(\{.*?\});", re.DOTALL
+)
+HYDROLOGY_PHENOMENA = {
+    1: "Підвищення рівнів води",
+    2: "Льодові явища",
+    3: "Швидкоплинні паводки",
+    4: "Хвилювання, вітрові нагони",
+    5: "Селі",
+    6: "Зниження рівнів води",
+}
 
 
 def _require_list(value: object) -> list[Any]:
@@ -155,6 +185,17 @@ def _require_mapping(value: object) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError
     return value
+
+
+def _geometry_polygon_values(geometry: Mapping[str, Any]) -> list[Any]:
+    """Return normalized GeoJSON polygon coordinate collections."""
+    geometry_type = geometry["type"]
+    coordinates = _require_list(geometry["coordinates"])
+    if geometry_type == "Polygon":
+        return [coordinates]
+    if geometry_type == "MultiPolygon":
+        return coordinates
+    raise TypeError
 
 
 def _parse_warning_period(
@@ -177,8 +218,13 @@ def _parse_warning_period(
             f"{year}-{month:02d}-{match['day']} {match['start']}",
             "%Y-%m-%d %H:%M",
         ).replace(tzinfo=UKRAINE_TIME_ZONE)
+        end_month = int(match["end_month"] or month)
+        end_year = year
+        if month == DECEMBER and end_month == JANUARY:
+            end_year += 1
+        end_day = match["end_day"] or match["day"]
         end = datetime.strptime(
-            f"{year}-{month:02d}-{match['day']} {match['end']}",
+            f"{end_year}-{end_month:02d}-{end_day} {match['end']}",
             "%Y-%m-%d %H:%M",
         ).replace(tzinfo=UKRAINE_TIME_ZONE)
     except ValueError:
@@ -222,15 +268,153 @@ def parse_regional_weather_warnings(
                             period=period,
                             starts_at=starts_at,
                             ends_at=ends_at,
+                            geometry_path=str(
+                                region[WEATHER_WARNING_GEOMETRY_PATH_KEY]
+                            ),
                         )
                     )
     except (KeyError, TypeError, ValueError) as exc:
         msg = "Invalid regional weather warning data"
         raise UkrHMCDataError(msg) from exc
-    return updated_at, {
-        region_id: tuple(region_warnings)
-        for region_id, region_warnings in warnings.items()
-    }
+    deduplicated = {}
+    for region_id, region_warnings in warnings.items():
+        unique = {}
+        for warning in region_warnings:
+            key = (
+                warning.danger_level,
+                warning.phenomenon_code,
+                warning.description,
+                warning.period,
+                warning.geometry_path,
+            )
+            unique.setdefault(key, warning)
+        deduplicated[region_id] = tuple(unique.values())
+    return updated_at, deduplicated
+
+
+def parse_regional_hazard_warnings(
+    payload: Mapping[str, Any],
+) -> tuple[datetime, dict[int, tuple[UkrHMCWeatherWarning, ...]]]:
+    """Parse a regional fire or avalanche warning feed."""
+    return parse_regional_weather_warnings(payload)
+
+
+def parse_regional_hydrology_warnings(
+    payload: Mapping[str, Any], lookup_script: str
+) -> tuple[datetime, dict[int, tuple[UkrHMCHydrologyWarning, ...]]]:
+    """Parse hydrological warnings and official basin-area names."""
+    match = HYDROLOGY_WARNING_REGIONS_PATTERN.search(lookup_script)
+    if match is None:
+        msg = "Invalid regional hydrology warning lookup data"
+        raise UkrHMCDataError(msg)
+    try:
+        region_names = _require_mapping(json.loads(match.group(1)))
+        updated_at = datetime.strptime(
+            str(payload[WEATHER_WARNINGS_UPDATED_KEY]), "%d.%m.%Y, %H:%M"
+        ).replace(tzinfo=UKRAINE_TIME_ZONE)
+        warnings: dict[int, list[UkrHMCHydrologyWarning]] = {}
+        for group_value in _require_list(payload[WEATHER_WARNINGS_GROUPS_KEY]):
+            for region_value in _require_list(group_value):
+                region = _require_mapping(region_value)
+                alerts = region.get(WEATHER_WARNING_ALERTS_KEY)
+                if not isinstance(alerts, list) or not alerts:
+                    continue
+                region_id = int(region[WEATHER_WARNING_REGION_KEY])
+                level = int(str(region[WEATHER_WARNING_LEVEL_KEY]).split("_", 1)[0])
+                for alert_value in alerts:
+                    alert = _require_mapping(alert_value)
+                    period, starts_at, ends_at = _parse_warning_period(
+                        alert[WEATHER_WARNING_PERIOD_KEY], updated_at
+                    )
+                    phenomenon_code = _optional_int(alert, WEATHER_WARNING_CODE_KEY)
+                    warnings.setdefault(region_id, []).append(
+                        UkrHMCHydrologyWarning(
+                            region_id=region_id,
+                            basin_name=str(region_names.get(str(region_id), region_id)),
+                            danger_level=level,
+                            phenomenon_code=phenomenon_code,
+                            phenomenon=HYDROLOGY_PHENOMENA.get(phenomenon_code),
+                            description=unescape(
+                                str(alert[WEATHER_WARNING_DESCRIPTION_KEY])
+                            ).strip(),
+                            period=period,
+                            starts_at=starts_at,
+                            ends_at=ends_at,
+                            geometry_path=str(
+                                region[WEATHER_WARNING_GEOMETRY_PATH_KEY]
+                            ),
+                        )
+                    )
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid regional hydrology warning data"
+        raise UkrHMCDataError(msg) from exc
+
+    deduplicated = {}
+    for region_id, region_warnings in warnings.items():
+        unique = {}
+        for warning in region_warnings:
+            key = (
+                warning.danger_level,
+                warning.phenomenon_code,
+                warning.description,
+                warning.period,
+                warning.geometry_path,
+            )
+            unique.setdefault(key, warning)
+        deduplicated[region_id] = tuple(unique.values())
+    return updated_at, deduplicated
+
+
+def parse_region_geometry(
+    payload: Mapping[str, Any],
+) -> tuple[tuple[tuple[tuple[float, float], ...], ...], ...]:
+    """Parse Polygon and MultiPolygon rings from provider GeoJSON."""
+    if payload.get("type") != "GeometryCollection":
+        msg = "Invalid regional geometry data"
+        raise UkrHMCDataError(msg)
+    try:
+        polygons: list[tuple[tuple[tuple[float, float], ...], ...]] = []
+        for geometry_value in _require_list(payload["geometries"]):
+            geometry = _require_mapping(geometry_value)
+            for polygon_value in _geometry_polygon_values(geometry):
+                rings = tuple(
+                    tuple((float(point[0]), float(point[1])) for point in ring)
+                    for ring in _require_list(polygon_value)
+                )
+                if rings and all(rings):
+                    polygons.append(rings)
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        msg = "Invalid regional geometry data"
+        raise UkrHMCDataError(msg) from exc
+    return tuple(polygons)
+
+
+def point_in_region(
+    longitude: float,
+    latitude: float,
+    polygons: tuple[tuple[tuple[tuple[float, float], ...], ...], ...],
+) -> bool:
+    """Return whether a point is inside a GeoJSON polygon or multipolygon."""
+
+    def inside_ring(ring: tuple[tuple[float, float], ...]) -> bool:
+        inside = False
+        previous_x, previous_y = ring[-1]
+        for current_x, current_y in ring:
+            if (current_y > latitude) != (previous_y > latitude) and longitude < (
+                (previous_x - current_x)
+                * (latitude - current_y)
+                / (previous_y - current_y)
+                + current_x
+            ):
+                inside = not inside
+            previous_x, previous_y = current_x, current_y
+        return inside
+
+    return any(
+        inside_ring(polygon[0]) and not any(inside_ring(hole) for hole in polygon[1:])
+        for polygon in polygons
+        if polygon
+    )
 
 
 def _parse_js_assignment(script: str, variable: str) -> Any:
@@ -456,6 +640,63 @@ def parse_hydrology_observations(
         msg = "Invalid hydrology observation data"
         raise UkrHMCDataError(msg) from exc
     return observations
+
+
+def parse_snow_station_catalog(script: str) -> dict[int, UkrHMCSnowStation]:
+    """Parse mountain stations from the provider's map lookup."""
+    records = _parse_js_assignment(script, SNOW_STATIONS_VARIABLE)
+    if not isinstance(records, Mapping):
+        msg = "Invalid snow station catalog"
+        raise UkrHMCDataError(msg)
+    try:
+        return {
+            int(station_id): UkrHMCSnowStation(
+                station_id=int(station_id),
+                name=str(record[SNOW_STATION_NAME_KEY]),
+                latitude=float(record[SNOW_STATION_COORDINATES_KEY][0]),
+                longitude=float(record[SNOW_STATION_COORDINATES_KEY][1]),
+            )
+            for station_id, record in records.items()
+            if isinstance(record, Mapping)
+        }
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        msg = "Invalid snow station catalog data"
+        raise UkrHMCDataError(msg) from exc
+
+
+def parse_snow_observations(
+    payload: Mapping[str, Any], lookups: UkrHMCLookups
+) -> dict[int, UkrHMCSnowObservation]:
+    """Parse the latest snow and mountain-weather observations."""
+    try:
+        observed_on = (
+            datetime.strptime(str(payload["0"]), "%d.%m.%Y")
+            .replace(tzinfo=UKRAINE_TIME_ZONE)
+            .date()
+        )
+        return {
+            int(station_id): UkrHMCSnowObservation(
+                observed_on=observed_on,
+                temperature=float(record[SNOW_OBSERVATION_TEMPERATURE_KEY]),
+                snow_depth=float(record[SNOW_OBSERVATION_DEPTH_KEY]),
+                snow_depth_change=float(record[SNOW_OBSERVATION_DEPTH_CHANGE_KEY]),
+                humidity=float(record[SNOW_OBSERVATION_HUMIDITY_KEY]),
+                wind_speed=(
+                    None
+                    if int(record[SNOW_OBSERVATION_STATION_KEY])
+                    == SNOW_STATION_WITHOUT_WIND_ID
+                    else float(record[SNOW_OBSERVATION_WIND_SPEED_KEY])
+                ),
+                wind=_wind(lookups, record[SNOW_OBSERVATION_WIND_DIRECTION_KEY]),
+                cloudiness=str(record.get(SNOW_OBSERVATION_CLOUDINESS_KEY) or ""),
+                phenomena=str(record.get(SNOW_OBSERVATION_PHENOMENA_KEY) or ""),
+            )
+            for station_id, record in payload.items()
+            if station_id != "0" and isinstance(record, Mapping)
+        }
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid snow observation data"
+        raise UkrHMCDataError(msg) from exc
 
 
 def parse_lookups(icon_script: str, wind_script: str) -> UkrHMCLookups:

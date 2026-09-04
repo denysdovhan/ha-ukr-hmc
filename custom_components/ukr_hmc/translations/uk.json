@@ -4,12 +4,13 @@
     "step": {
       "user": {
         "title": "Підключення до УкрГМЦ",
-        "description": "Оберіть метеорологічну станцію, погоду для місця, радіологічну станцію або гідрологічний пост.",
+        "description": "Оберіть метеорологічну станцію, погоду для місця, радіологічну станцію, гідрологічний пост або сніголавинну станцію.",
         "menu_options": {
           "weather_station": "Метеорологічна станція",
           "weather_location": "Погода для місця",
           "radiation_station": "Радіологічна станція",
-          "hydrology_post": "Гідрологічний пост"
+          "hydrology_post": "Гідрологічний пост",
+          "snow_station": "Сніголавинна станція"
         }
       }
     },
@@ -102,6 +103,18 @@
       },
       "entry_type": "Радіологічна станція"
     },
+    "snow_station": {
+      "step": { "user": {
+        "title": "Додати сніголавинну станцію",
+        "description": "Сніговий покрив і метеорологічні спостереження гірської станції УкрГМЦ.",
+        "data": { "name": "Назва", "station_id": "Сніголавинна станція" },
+        "data_description": { "name": "Назва в Home Assistant.", "station_id": "Відображаються лише станції з наявним записом УкрГМЦ." }
+      } },
+      "error": { "cannot_connect": "Не вдалося підключитися до УкрГМЦ.", "invalid_station": "Обрана сніголавинна станція більше недоступна.", "no_stations": "УкрГМЦ не повернув жодної сніголавинної станції." },
+      "abort": { "already_configured": "Цю сніголавинну станцію вже налаштовано." },
+      "initiate_flow": { "user": "Додати сніголавинну станцію" },
+      "entry_type": "Сніголавинна станція"
+    },
     "hydrology_post": {
       "step": {
         "user": {
@@ -154,6 +167,11 @@
       "water_temperature": {
         "name": "Температура води"
       },
+      "snow_depth": { "name": "Висота снігового покриву" },
+      "snow_depth_change": { "name": "Зміна висоти снігового покриву" },
+      "cloudiness": { "name": "Хмарність" },
+      "weather_phenomena": { "name": "Погодні явища" },
+      "observation_date": { "name": "Дата спостереження" },
       "hydrological_situation": {
         "name": "Гідрологічна ситуація",
         "state": {
@@ -170,6 +188,7 @@
       "temperature": {
         "name": "Температура"
       },
+      "apparent_temperature": { "name": "Відчувається як" },
       "humidity": {
         "name": "Вологість"
       },
@@ -210,6 +229,18 @@
       "maximum_wind_gust_time": { "name": "Час максимального пориву вітру" },
       "regional_weather_warning_level": {
         "name": "Рівень регіонального метеорологічного попередження"
+      },
+      "regional_fire_danger_level": {
+        "name": "Регіональний рівень пожежної небезпеки",
+        "state": { "none": "Немає", "extreme": "Надзвичайна", "prolonged_extreme": "Тривала надзвичайна" }
+      },
+      "regional_snow_danger_level": {
+        "name": "Регіональний рівень сніголавинної небезпеки",
+        "state": { "none": "Немає", "low": "Низька", "moderate": "Помірна", "considerable": "Значна", "high": "Висока", "very_high": "Надвисока" }
+      },
+      "hydrology_warning_level": {
+        "name": "Рівень гідрологічного попередження",
+        "state": { "none": "Немає", "change_without_consequences": "Зміна без негативних наслідків", "danger_level_1": "I рівень небезпеки", "danger_level_2": "II рівень небезпеки", "danger_level_3": "III рівень небезпеки", "danger_level_3_low_water": "III рівень — низькі рівні води" }
       }
     },
     "binary_sensor": {
@@ -221,6 +252,16 @@
       "api_available": { "name": "API доступний" },
       "data_stale": { "name": "Дані застаріли" },
       "regional_weather_warning": { "name": "Регіональне метеорологічне попередження" }
+    },
+    "calendar": {
+      "warning_calendar": { "name": "Календар погодних попереджень" },
+      "hydrology_warning_calendar": { "name": "Календар гідрологічних попереджень" }
+    },
+    "event": {
+      "meteorological_warning_event": { "name": "Зміни метеорологічних попереджень", "state_attributes": { "event_type": { "state": { "started": "Почалося", "level_increased": "Рівень підвищено", "ended": "Завершилося" } } } },
+      "fire_warning_event": { "name": "Зміни пожежної небезпеки", "state_attributes": { "event_type": { "state": { "started": "Почалося", "level_increased": "Рівень підвищено", "ended": "Завершилося" } } } },
+      "avalanche_warning_event": { "name": "Зміни лавинної небезпеки", "state_attributes": { "event_type": { "state": { "started": "Почалося", "level_increased": "Рівень підвищено", "ended": "Завершилося" } } } },
+      "hydrology_warning_event": { "name": "Зміни гідрологічних попереджень", "state_attributes": { "event_type": { "state": { "started": "Почалося", "level_increased": "Рівень підвищено", "ended": "Завершилося" } } } }
     }
   }
 }
