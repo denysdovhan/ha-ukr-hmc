@@ -193,14 +193,30 @@
       "sunset": {"name": "Захід сонця"},
       "phenomenon_code": {"name": "Службовий код погодного явища"},
       "indicator_code": {"name": "Службовий код індикатора"},
-      "forecast_details": {"name": "Детальний прогноз"}
+      "forecast_details": {"name": "Детальний прогноз"},
+      "last_successful_update": {"name": "Останнє успішне оновлення"},
+      "consecutive_update_failures": {"name": "Послідовні помилки оновлення"},
+      "precipitation_next_1h": {"name": "Опади протягом наступної години"},
+      "precipitation_next_3h": {"name": "Опади протягом наступних 3 годин"},
+      "precipitation_next_6h": {"name": "Опади протягом наступних 6 годин"},
+      "precipitation_next_12h": {"name": "Опади протягом наступних 12 годин"},
+      "precipitation_next_24h": {"name": "Опади протягом наступних 24 годин"},
+      "next_precipitation": {"name": "Найближчі опади"},
+      "temperature_today_min": {"name": "Мінімальна температура сьогодні"},
+      "temperature_today_max": {"name": "Максимальна температура сьогодні"},
+      "temperature_tomorrow_min": {"name": "Мінімальна температура завтра"},
+      "temperature_tomorrow_max": {"name": "Максимальна температура завтра"},
+      "maximum_wind_gust_next_24h": {"name": "Максимальний порив вітру за наступні 24 години"},
+      "maximum_wind_gust_time": {"name": "Час максимального пориву вітру"}
     },
     "binary_sensor": {
       "global_weather_attention": {"name": "Загальне метеорологічне попередження"},
       "global_hydrology_attention": {"name": "Загальне гідрологічне попередження"},
       "global_snow_attention": {"name": "Загальне снігове попередження"},
       "global_radiation_attention": {"name": "Загальне радіаційне попередження"},
-      "global_fire_attention": {"name": "Загальне попередження про пожежну небезпеку"}
+      "global_fire_attention": {"name": "Загальне попередження про пожежну небезпеку"},
+      "api_available": {"name": "API доступний"},
+      "data_stale": {"name": "Дані застаріли"}
     }
   }
 }

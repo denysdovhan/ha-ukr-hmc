@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
@@ -21,6 +22,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ukr_hmc.binary_sensor import (
     ALERT_FLAGS,
     UkrHMCAlertBinarySensor,
+    UkrHMCApiAvailableBinarySensor,
+    UkrHMCDataStaleBinarySensor,
 )
 from custom_components.ukr_hmc.const import (
     CONFIGURATION_URL,
@@ -32,12 +35,20 @@ from custom_components.ukr_hmc.coordinator import UkrHMCCoordinator
 from custom_components.ukr_hmc.sensor import (
     HYDROLOGY_SENSORS,
     LOCATION_SENSORS,
+    LOCATION_SUMMARY_SENSORS,
     RADIATION_SENSORS,
     STATION_SENSORS,
+    UkrHMCConsecutiveUpdateFailuresSensor,
     UkrHMCForecastDetailsSensor,
     UkrHMCHydrologySensor,
+    UkrHMCLastSuccessfulUpdateSensor,
+    UkrHMCLocationSummarySensor,
     UkrHMCRadiationSensor,
     UkrHMCSensor,
+    _daily_temperature,
+    _maximum_gust,
+    _next_precipitation,
+    _precipitation_sum,
 )
 from custom_components.ukr_hmc.weather import UkrHMCWeather, _single_wind_speed
 
@@ -318,7 +329,84 @@ async def test_global_attention_binary_sensors(hass: HomeAssistant) -> None:
     assert sensors["attns_meteo"].is_on
     assert not sensors["attns_hydro"].is_on
     assert sensors["attns_fire"].is_on
-    assert sensors["attns_meteo"].device_info["model"] == "UkrHMC Global Alerts"
+    assert sensors["attns_meteo"].device_info["model"] == "UkrHMC Service"
+
+
+async def test_api_diagnostic_entities(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    updated_at = datetime(2026, 9, 4, 8, 30, tzinfo=UTC)
+    coordinator.last_successful_update = updated_at
+
+    availability = UkrHMCApiAvailableBinarySensor(coordinator, entry.entry_id)
+    last_update = UkrHMCLastSuccessfulUpdateSensor(coordinator, entry.entry_id)
+
+    assert availability.available
+    assert availability.is_on
+    assert availability.entity_category is EntityCategory.DIAGNOSTIC
+    assert availability.device_info["model"] == "UkrHMC Service"
+    assert last_update.available
+    assert last_update.native_value == updated_at
+    assert last_update.device_class is SensorDeviceClass.TIMESTAMP
+    assert last_update.entity_category is EntityCategory.DIAGNOSTIC
+
+    failures = UkrHMCConsecutiveUpdateFailuresSensor(coordinator, entry.entry_id)
+    stale = UkrHMCDataStaleBinarySensor(coordinator, entry.entry_id)
+    assert failures.native_value == 0
+    assert not stale.is_on
+
+    coordinator.last_update_success = False
+    coordinator.consecutive_update_failures = 2
+    assert availability.available
+    assert not availability.is_on
+    assert last_update.available
+    assert last_update.native_value == updated_at
+    assert failures.native_value == 2
+
+    coordinator.last_successful_update = datetime.now(UTC) - timedelta(minutes=46)
+    assert stale.is_on
+
+
+async def test_location_forecast_summary_sensors(hass: HomeAssistant) -> None:
+    entry = _location_entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    anchor = datetime(2026, 7, 30, 18, tzinfo=UTC)
+    original = DATA.location_forecasts["location-subentry"]
+    hourly = tuple(
+        replace(
+            original.hourly_forecasts[0],
+            forecast_at=anchor + timedelta(hours=hour),
+            precipitation=0.5 if hour in (2, 4) else 0,
+            wind_gust=float(hour),
+        )
+        for hour in range(1, 25)
+    )
+    forecast = replace(original, hourly_forecasts=hourly)
+    coordinator.async_set_updated_data(
+        replace(DATA, location_forecasts={"location-subentry": forecast})
+    )
+    coordinator.last_successful_update = anchor
+    subentry = next(iter(entry.subentries.values()))
+
+    assert _precipitation_sum(forecast, anchor, 1) == 0
+    assert _precipitation_sum(forecast, anchor, 3) == 0.5
+    assert _precipitation_sum(forecast, anchor, 24) == 1
+    assert _next_precipitation(forecast, anchor) == anchor + timedelta(hours=2)
+    assert _daily_temperature(forecast, anchor, 0, high=False) == 14
+    assert _daily_temperature(forecast, anchor, 0, high=True) == 26
+    assert _maximum_gust(forecast, anchor) == hourly[-1]
+
+    sensors = {
+        description.key: UkrHMCLocationSummarySensor(coordinator, subentry, description)
+        for description in LOCATION_SUMMARY_SENSORS
+    }
+    assert sensors["precipitation_next_24h"].native_value == 1
+    assert sensors["next_precipitation"].native_value == anchor + timedelta(hours=2)
+    assert sensors["temperature_today_min"].native_value == 14
+    assert sensors["temperature_today_max"].native_value == 26
+    assert sensors["maximum_wind_gust_next_24h"].native_value == 24
+    assert sensors["maximum_wind_gust_time"].native_value == hourly[-1].forecast_at
 
 
 async def test_radiation_sensors_use_direct_provider_values(

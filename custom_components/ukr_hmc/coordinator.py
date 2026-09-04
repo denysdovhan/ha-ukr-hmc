@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, override
 
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, CONF_NAME
@@ -51,6 +52,8 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
             update_interval=UPDATE_INTERVAL,
         )
         self._api = api
+        self.last_successful_update: datetime | None = None
+        self.consecutive_update_failures = 0
 
     @override
     async def _async_update_data(self) -> UkrHMCData:
@@ -77,11 +80,16 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
                 subentry.subentry_type == SUBENTRY_TYPE_HYDROLOGY_POST
                 for subentry in self.config_entry.subentries.values()
             )
-            return await self._api.async_get_data(
+            data = await self._api.async_get_data(
                 location_forecasts,
                 include_station_data=include_station_data,
                 include_radiation_data=include_radiation_data,
                 include_hydrology_data=include_hydrology_data,
             )
         except UkrHMCError as exc:
+            self.consecutive_update_failures += 1
             raise UpdateFailed(str(exc)) from exc
+        else:
+            self.last_successful_update = datetime.now(UTC)
+            self.consecutive_update_failures = 0
+            return data

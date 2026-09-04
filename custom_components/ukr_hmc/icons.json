@@ -53,14 +53,30 @@
       "sunset": {"default": "mdi:weather-sunset-down"},
       "phenomenon_code": {"default": "mdi:code-tags"},
       "indicator_code": {"default": "mdi:code-tags"},
-      "forecast_details": {"default": "mdi:calendar-clock"}
+      "forecast_details": {"default": "mdi:calendar-clock"},
+      "last_successful_update": {"default": "mdi:update"},
+      "consecutive_update_failures": {"default": "mdi:counter"},
+      "precipitation_next_1h": {"default": "mdi:weather-rainy"},
+      "precipitation_next_3h": {"default": "mdi:weather-rainy"},
+      "precipitation_next_6h": {"default": "mdi:weather-rainy"},
+      "precipitation_next_12h": {"default": "mdi:weather-rainy"},
+      "precipitation_next_24h": {"default": "mdi:weather-rainy"},
+      "next_precipitation": {"default": "mdi:weather-pouring"},
+      "temperature_today_min": {"default": "mdi:thermometer-low"},
+      "temperature_today_max": {"default": "mdi:thermometer-high"},
+      "temperature_tomorrow_min": {"default": "mdi:thermometer-low"},
+      "temperature_tomorrow_max": {"default": "mdi:thermometer-high"},
+      "maximum_wind_gust_next_24h": {"default": "mdi:weather-windy"},
+      "maximum_wind_gust_time": {"default": "mdi:weather-windy-variant"}
     },
     "binary_sensor": {
       "global_weather_attention": {"default": "mdi:weather-lightning"},
       "global_hydrology_attention": {"default": "mdi:waves-arrow-up"},
       "global_snow_attention": {"default": "mdi:snowflake-alert"},
       "global_radiation_attention": {"default": "mdi:radioactive"},
-      "global_fire_attention": {"default": "mdi:fire-alert"}
+      "global_fire_attention": {"default": "mdi:fire-alert"},
+      "api_available": {"default": "mdi:cloud-check"},
+      "data_stale": {"default": "mdi:database-clock"}
     }
   }
 }

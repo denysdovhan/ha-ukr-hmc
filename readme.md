@@ -93,6 +93,30 @@ The difference is in forecasts:
 
 Weather locations expose current precipitation. Physical stations also expose sunrise, sunset, provider diagnostic codes, and a compact detailed-forecast sensor. Its attributes preserve the published day/night temperature ranges, precipitation text, cloudiness, and wind-speed ranges.
 
+#### Weather entities and sensors
+
+| Entity | Weather station | Weather location | Notes |
+| ------ | :-------------: | :--------------: | ----- |
+| Weather | ✅ | ✅ | Station: measured current conditions with daily and day/night forecasts. Location: modelled current-hour conditions with hourly and daily forecasts. |
+| Condition | ✅ | ✅ | Canonical Home Assistant condition. |
+| Weather text | ✅ | ✅ | Description published by UkrHMC. |
+| Temperature | ✅ | ✅ | Current station measurement or current-hour point forecast. |
+| Humidity | ✅ | ✅ | Relative humidity. |
+| Pressure | ✅ | — | Physical station measurement in mmHg. |
+| Wind speed | ✅ | ✅ | Current speed in m/s. |
+| Wind direction | ✅ | ✅ | Direction in degrees; locations also expose the provider compass value. |
+| Current precipitation | — | ✅ | Direct point-forecast precipitation in mm. |
+| Precipitation next 1/3/6/12/24 hours | — | ✅ | Sum of complete hourly precipitation records in each horizon. |
+| Next precipitation | — | ✅ | Timestamp of the first upcoming hour with precipitation above 0 mm. |
+| Minimum / maximum today and tomorrow | — | ✅ | Direct low/night and high/day values used by the provider's daily forecast. |
+| Maximum wind gust next 24 hours and its time | — | ✅ | Largest published hourly gust and its forecast timestamp. |
+| Data time | ✅ | ✅ | Provider observation or forecast timestamp. |
+| Sunrise / sunset | ✅ | — | Timestamp sensors. |
+| Phenomenon / indicator code | ✅ | — | Provider service codes; disabled by default. |
+| Detailed forecast | ✅ | — | Diagnostic attributes with day/night temperature ranges, precipitation text, cloudiness, wind ranges, sunrise, sunset, and provider code. |
+
+Hourly forecasts are available only for a configured **weather location**. They come directly from the UkrHMC `dataDetailed` point-forecast product and may include temperature, condition, precipitation, pressure, humidity, dew point, wind speed, gust, and direction when the provider publishes them. Home Assistant exposes forecasts through the weather entity forecast service and forecast-capable dashboard cards, not as one sensor per hour.
+
 | Weather station                                 | Weather location                                  |
 | ----------------------------------------------- | ------------------------------------------------- |
 | ![Weather Station](./media/weather-station.png) | ![Weather Location](./media/weather-location.png) |
@@ -108,6 +132,20 @@ You can monitor radiation levels by using a physical radiation monitoring statio
 You can monitor hydrological in Ukrainian rivers by using a physical hydrology post: water level, water temperature, conditions, etc.
 
 <img src="./media/hydrology.png" alt="Hydrology Post" width="500">
+
+### Service diagnostics and global attention flags
+
+The shared UkrHMC service device exposes:
+
+| Entity | Meaning |
+| ------ | ------- |
+| API available | Connectivity binary sensor. It is on when the latest scheduled provider update succeeded and off after an update failure. |
+| Last successful update | Timestamp of the latest complete provider snapshot retained across temporary failures. |
+| Data stale | Problem sensor activated when the last successful complete update is older than 45 minutes. |
+| Consecutive update failures | Number of failed provider updates since the latest successful refresh. |
+| Global weather, hydrology, snow, radiation, and fire attention | Direct provider-global flags. They are not regional warnings and contain no severity, text, or validity period. |
+
+All data is polled through one shared coordinator every 15 minutes. The diagnostic update time is the moment Home Assistant successfully received the complete snapshot, not the observation time published by an individual station. Forecast summary sensors require complete provider hours for their selected horizon; they become unknown instead of treating missing precipitation as zero.
 
 ## Removal
 

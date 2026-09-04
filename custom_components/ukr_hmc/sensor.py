@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, override
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -23,19 +24,24 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .condition import hmc_condition_to_ha
 from .const import (
+    ATTRIBUTION,
     CONF_STATION_ID,
+    CONFIGURATION_URL,
     DOMAIN,
     HYDROLOGY_CONFIGURATION_URL,
     MANUFACTURER,
+    NAME,
     RADIATION_CONFIGURATION_URL,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
 )
+from .coordinator import UkrHMCCoordinator
 from .entity import UkrHMCEntity
 
 if TYPE_CHECKING:
@@ -51,10 +57,10 @@ if TYPE_CHECKING:
         UkrHMCForecastDay,
         UkrHMCHourlyForecast,
         UkrHMCHydrologyObservation,
+        UkrHMCLocationForecast,
         UkrHMCObservation,
         UkrHMCRadiationObservation,
     )
-    from .coordinator import UkrHMCCoordinator
     from .data import UkrHMCConfigEntry
 
 
@@ -78,6 +84,13 @@ class UkrHMCHydrologySensorDescription(SensorEntityDescription):
     """Describe a current hydrology sensor."""
 
     value_fn: Callable[[UkrHMCHydrologyObservation], StateType | datetime]
+
+
+@dataclass(frozen=True, kw_only=True)
+class UkrHMCLocationSummarySensorDescription(SensorEntityDescription):
+    """Describe a value derived directly from a location forecast series."""
+
+    value_fn: Callable[[UkrHMCLocationForecast, datetime], StateType | datetime | None]
 
 
 CONDITION_SENSOR = UkrHMCSensorDescription(
@@ -246,6 +259,130 @@ LOCATION_SENSORS: tuple[UkrHMCSensorDescription, ...] = (
     DATA_TIME_SENSOR,
 )
 
+
+def _forecast_hours(
+    forecast: UkrHMCLocationForecast,
+    anchor: datetime,
+    hours: int,
+) -> tuple[UkrHMCHourlyForecast, ...]:
+    """Return complete upcoming provider hours for a fixed horizon."""
+    end = anchor + timedelta(hours=hours)
+    values = tuple(
+        item for item in forecast.hourly_forecasts if anchor < item.forecast_at <= end
+    )
+    return values if len(values) == hours else ()
+
+
+def _precipitation_sum(
+    forecast: UkrHMCLocationForecast,
+    anchor: datetime,
+    hours: int,
+) -> float | None:
+    """Sum precipitation only when every hour in the horizon is published."""
+    values = _forecast_hours(forecast, anchor, hours)
+    if not values or any(item.precipitation is None for item in values):
+        return None
+    return sum(item.precipitation for item in values if item.precipitation is not None)
+
+
+def _next_precipitation(
+    forecast: UkrHMCLocationForecast,
+    anchor: datetime,
+) -> datetime | None:
+    """Return the first upcoming hour with published precipitation."""
+    return next(
+        (
+            item.forecast_at
+            for item in forecast.hourly_forecasts
+            if item.forecast_at > anchor
+            and item.precipitation is not None
+            and item.precipitation > 0
+        ),
+        None,
+    )
+
+
+def _daily_temperature(
+    forecast: UkrHMCLocationForecast,
+    anchor: datetime,
+    day_offset: int,
+    *,
+    high: bool,
+) -> float | None:
+    """Return the provider's direct daily low or high value."""
+    target = anchor.astimezone(ZoneInfo("Europe/Kyiv")).date() + timedelta(
+        days=day_offset
+    )
+    for item in forecast.daily_forecasts:
+        if item.date == target:
+            return item.temperature_day if high else item.temperature_night
+    return None
+
+
+def _maximum_gust(
+    forecast: UkrHMCLocationForecast,
+    anchor: datetime,
+) -> UkrHMCHourlyForecast | None:
+    """Return the hour with the largest published gust in the next 24 hours."""
+    values = (
+        item
+        for item in _forecast_hours(forecast, anchor, 24)
+        if item.wind_gust is not None
+    )
+    return max(values, key=lambda item: item.wind_gust or 0, default=None)
+
+
+LOCATION_SUMMARY_SENSORS: tuple[UkrHMCLocationSummarySensorDescription, ...] = (
+    *(
+        UkrHMCLocationSummarySensorDescription(
+            key=f"precipitation_next_{hours}h",
+            translation_key=f"precipitation_next_{hours}h",
+            device_class=SensorDeviceClass.PRECIPITATION,
+            native_unit_of_measurement=UnitOfPrecipitationDepth.MILLIMETERS,
+            value_fn=lambda forecast, anchor, horizon=hours: _precipitation_sum(
+                forecast, anchor, horizon
+            ),
+        )
+        for hours in (1, 3, 6, 12, 24)
+    ),
+    UkrHMCLocationSummarySensorDescription(
+        key="next_precipitation",
+        translation_key="next_precipitation",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_next_precipitation,
+    ),
+    *(
+        UkrHMCLocationSummarySensorDescription(
+            key=f"temperature_{day}_{extreme}",
+            translation_key=f"temperature_{day}_{extreme}",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            value_fn=lambda forecast, anchor, offset=day_offset, is_high=high: (
+                _daily_temperature(forecast, anchor, offset, high=is_high)
+            ),
+        )
+        for day, day_offset in (("today", 0), ("tomorrow", 1))
+        for extreme, high in (("min", False), ("max", True))
+    ),
+    UkrHMCLocationSummarySensorDescription(
+        key="maximum_wind_gust_next_24h",
+        translation_key="maximum_wind_gust_next_24h",
+        device_class=SensorDeviceClass.WIND_SPEED,
+        native_unit_of_measurement=UnitOfSpeed.METERS_PER_SECOND,
+        value_fn=lambda forecast, anchor: (
+            gust.wind_gust if (gust := _maximum_gust(forecast, anchor)) else None
+        ),
+    ),
+    UkrHMCLocationSummarySensorDescription(
+        key="maximum_wind_gust_time",
+        translation_key="maximum_wind_gust_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda forecast, anchor: (
+            gust.forecast_at if (gust := _maximum_gust(forecast, anchor)) else None
+        ),
+    ),
+)
+
 RADIATION_SENSORS: tuple[UkrHMCRadiationSensorDescription, ...] = (
     UkrHMCRadiationSensorDescription(
         key="exposure_dose_rate",
@@ -368,6 +505,52 @@ class UkrHMCSensor(UkrHMCEntity, SensorEntity):
         )
 
 
+class UkrHMCLocationSummarySensor(UkrHMCEntity, SensorEntity):
+    """Represent a summary of direct hourly or daily location forecasts."""
+
+    entity_description: UkrHMCLocationSummarySensorDescription
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+        description: UkrHMCLocationSummarySensorDescription,
+    ) -> None:
+        """Initialize a location forecast summary sensor."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = description
+        self._attr_unique_id = f"{subentry.subentry_id}-{description.key}"
+
+    @property
+    def location_forecast(self) -> UkrHMCLocationForecast | None:
+        """Return the complete forecast for the configured point."""
+        return self.coordinator.data.location_forecasts.get(self._subentry.subentry_id)
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether forecast data and a refresh timestamp are available."""
+        return (
+            super().available
+            and self.location_forecast is not None
+            and self.coordinator.last_successful_update is not None
+        )
+
+    @property
+    @override
+    def native_value(self) -> StateType | datetime | None:
+        """Return the forecast summary value."""
+        if (
+            self.location_forecast is None
+            or self.coordinator.last_successful_update is None
+        ):
+            return None
+        return self.entity_description.value_fn(
+            self.location_forecast,
+            self.coordinator.last_successful_update,
+        )
+
+
 class UkrHMCForecastDetailsSensor(UkrHMCEntity, SensorEntity):
     """Expose direct provider station forecast details compactly."""
 
@@ -432,6 +615,94 @@ class UkrHMCForecastDetailsSensor(UkrHMCEntity, SensorEntity):
                 for forecast in self.station_forecasts
             ]
         }
+
+
+class UkrHMCLastSuccessfulUpdateSensor(
+    CoordinatorEntity[UkrHMCCoordinator],
+    SensorEntity,
+):
+    """Expose the time of the latest successful provider update."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "last_successful_update"
+
+    def __init__(self, coordinator: UkrHMCCoordinator, entry_id: str) -> None:
+        """Initialize the last successful update sensor."""
+        super().__init__(coordinator, context="diagnostic:last_successful_update")
+        self._entry_id = entry_id
+        self._attr_unique_id = f"{entry_id}-last_successful_update"
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Keep the last known successful update visible during failures."""
+        return self.coordinator.last_successful_update is not None
+
+    @property
+    @override
+    def native_value(self) -> datetime | None:
+        """Return the latest successful coordinator update time."""
+        return self.coordinator.last_successful_update
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        """Return the shared UkrHMC service device."""
+        return DeviceInfo(
+            configuration_url=CONFIGURATION_URL,
+            entry_type=DeviceEntryType.SERVICE,
+            identifiers={(DOMAIN, self._entry_id)},
+            manufacturer=MANUFACTURER,
+            model="UkrHMC Service",
+            name=NAME,
+        )
+
+
+class UkrHMCConsecutiveUpdateFailuresSensor(
+    CoordinatorEntity[UkrHMCCoordinator],
+    SensorEntity,
+):
+    """Expose the number of consecutive provider update failures."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:counter"
+    _attr_translation_key = "consecutive_update_failures"
+
+    def __init__(self, coordinator: UkrHMCCoordinator, entry_id: str) -> None:
+        """Initialize the consecutive failure counter."""
+        super().__init__(coordinator, context="diagnostic:update_failures")
+        self._entry_id = entry_id
+        self._attr_unique_id = f"{entry_id}-consecutive_update_failures"
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Keep the failure count visible during provider failures."""
+        return True
+
+    @property
+    @override
+    def native_value(self) -> int:
+        """Return the current consecutive failure count."""
+        return self.coordinator.consecutive_update_failures
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        """Return the shared UkrHMC service device."""
+        return DeviceInfo(
+            configuration_url=CONFIGURATION_URL,
+            entry_type=DeviceEntryType.SERVICE,
+            identifiers={(DOMAIN, self._entry_id)},
+            manufacturer=MANUFACTURER,
+            model="UkrHMC Service",
+            name=NAME,
+        )
 
 
 class UkrHMCRadiationSensor(UkrHMCEntity, SensorEntity):
@@ -557,6 +828,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up current sensors for each configured source."""
     coordinator = config_entry.runtime_data.coordinator
+    async_add_entities(
+        [
+            UkrHMCLastSuccessfulUpdateSensor(coordinator, config_entry.entry_id),
+            UkrHMCConsecutiveUpdateFailuresSensor(coordinator, config_entry.entry_id),
+        ]
+    )
     for subentry in config_entry.subentries.values():
         setup = SENSORS_BY_SUBENTRY_TYPE.get(subentry.subentry_type)
         if setup is None:
@@ -572,5 +849,13 @@ async def async_setup_entry(
         if subentry.subentry_type == SUBENTRY_TYPE_WEATHER_STATION:
             async_add_entities(
                 [UkrHMCForecastDetailsSensor(coordinator, subentry)],
+                config_subentry_id=subentry.subentry_id,
+            )
+        elif subentry.subentry_type == SUBENTRY_TYPE_WEATHER_LOCATION:
+            async_add_entities(
+                [
+                    UkrHMCLocationSummarySensor(coordinator, subentry, description)
+                    for description in LOCATION_SUMMARY_SENSORS
+                ],
                 config_subentry_id=subentry.subentry_id,
             )

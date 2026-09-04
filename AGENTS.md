@@ -53,8 +53,9 @@ types.
   data models, and parsers. Keep it ready for extraction to a standalone package.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
-- `binary_sensor.py` - exposes the provider's five global attention flags once
-  per config entry without treating them as regional warnings.
+- `binary_sensor.py` - exposes API availability, stale-data diagnostics, and the
+  provider's five global attention flags once per config entry without treating
+  them as regional warnings.
 - `config_flow.py` - creates the single service entry and typed weather,
   radiation, and hydrology subentries.
 - `const.py` - integration constants, subentry types, and the 15-minute update
@@ -65,8 +66,8 @@ types.
 - `entity.py` - shared weather data access, availability, and device metadata.
 - `icons.json` - frontend icons for generic sensor types and canonical weather
   condition states.
-- `sensor.py` - weather, radiation, and hydrology sensor descriptions and
-  entities.
+- `sensor.py` - weather, location forecast summaries, service diagnostics,
+  radiation, and hydrology sensor descriptions and entities.
 - `weather.py` - current weather plus forecast modes supported by each location
   type.
 - `translations/` - English and Ukrainian UI strings.

@@ -42,6 +42,8 @@ async def test_coordinator_returns_provider_snapshot(hass: HomeAssistant) -> Non
     coordinator = UkrHMCCoordinator(hass, entry, api)
 
     assert await coordinator._async_update_data() is DATA
+    assert coordinator.last_successful_update is not None
+    assert coordinator.last_successful_update.tzinfo is not None
     assert coordinator.update_interval == UPDATE_INTERVAL
     api.async_get_data.assert_awaited_once_with(
         {"location-subentry": LOCATION_FORECAST_REQUEST},
@@ -143,3 +145,4 @@ async def test_coordinator_wraps_api_error(hass: HomeAssistant) -> None:
 
     with pytest.raises(UpdateFailed, match="offline"):
         await coordinator._async_update_data()
+    assert coordinator.consecutive_update_failures == 1

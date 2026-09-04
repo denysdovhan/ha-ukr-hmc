@@ -66,6 +66,25 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
     assert isinstance(entry.runtime_data, UkrHMCRuntimeData)
 
     registry = er.async_get(hass)
+    _entity_id(registry, f"{entry.entry_id}-api_available", "binary_sensor")
+    _entity_id(registry, f"{entry.entry_id}-data_stale", "binary_sensor")
+    _entity_id(registry, f"{entry.entry_id}-last_successful_update")
+    _entity_id(registry, f"{entry.entry_id}-consecutive_update_failures")
+    for key in (
+        "precipitation_next_1h",
+        "precipitation_next_3h",
+        "precipitation_next_6h",
+        "precipitation_next_12h",
+        "precipitation_next_24h",
+        "next_precipitation",
+        "temperature_today_min",
+        "temperature_today_max",
+        "temperature_tomorrow_min",
+        "temperature_tomorrow_max",
+        "maximum_wind_gust_next_24h",
+        "maximum_wind_gust_time",
+    ):
+        _entity_id(registry, f"location-subentry-{key}")
     weather_entity_id = _entity_id(registry, "station-subentry", "weather")
     temperature_entity_id = _entity_id(registry, "station-subentry-temperature")
     condition_entity_id = _entity_id(registry, "station-subentry-condition")

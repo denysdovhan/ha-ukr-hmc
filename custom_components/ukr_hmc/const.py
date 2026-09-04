@@ -30,3 +30,4 @@ SUBENTRY_TYPES: Final = (
 )
 
 UPDATE_INTERVAL: Final = timedelta(minutes=15)
+STALE_DATA_AFTER: Final = timedelta(minutes=45)
