@@ -1,5 +1,6 @@
 | Date       | Name                                                                                            | Status |
 | ---------- | ----------------------------------------------------------------------------------------------- | ------ |
+| 2026-09-04 | [Hydrology warning geometry compatibility](2026-09-04-hydrology-geometry-fix.md)                | done   |
 | 2026-09-04 | [Warning event entities](2026-09-04-warning-events.md)                                         | wip    |
 | 2026-09-04 | [Radiological warning feed research](2026-09-04-radiological-warning-feed.md)                   | done   |
 | 2026-09-04 | [Diagnostics download](2026-09-04-diagnostics-download.md)                                     | wip    |

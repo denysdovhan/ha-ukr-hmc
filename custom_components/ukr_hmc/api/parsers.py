@@ -369,12 +369,21 @@ def parse_region_geometry(
     payload: Mapping[str, Any],
 ) -> tuple[tuple[tuple[tuple[float, float], ...], ...], ...]:
     """Parse Polygon and MultiPolygon rings from provider GeoJSON."""
-    if payload.get("type") != "GeometryCollection":
+    payload_type = payload.get("type")
+    if payload_type not in ("GeometryCollection", "FeatureCollection"):
         msg = "Invalid regional geometry data"
         raise UkrHMCDataError(msg)
     try:
+        if payload_type == "GeometryCollection":
+            geometry_values = _require_list(payload["geometries"])
+        else:
+            geometry_values = [
+                _require_mapping(feature_value)["geometry"]
+                for feature_value in _require_list(payload["features"])
+            ]
+
         polygons: list[tuple[tuple[tuple[float, float], ...], ...]] = []
-        for geometry_value in _require_list(payload["geometries"]):
+        for geometry_value in geometry_values:
             geometry = _require_mapping(geometry_value)
             for polygon_value in _geometry_polygon_values(geometry):
                 rings = tuple(

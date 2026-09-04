@@ -161,6 +161,16 @@ REGION_GEOMETRY_PAYLOAD = {
         }
     ],
 }
+REGION_FEATURE_COLLECTION_PAYLOAD = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {},
+            "geometry": REGION_GEOMETRY_PAYLOAD["geometries"][0],
+        }
+    ],
+}
 
 
 def test_parse_station_catalog() -> None:
@@ -438,6 +448,13 @@ def test_parse_regional_hydrology_warning_skips_basin_outlines() -> None:
 
 def test_parse_region_geometry_and_point_in_polygon() -> None:
     geometry = parse_region_geometry(REGION_GEOMETRY_PAYLOAD)
+
+    assert point_in_region(30.5234, 50.4501, geometry)
+    assert not point_in_region(32.0, 50.4501, geometry)
+
+
+def test_parse_region_feature_collection_and_point_in_polygon() -> None:
+    geometry = parse_region_geometry(REGION_FEATURE_COLLECTION_PAYLOAD)
 
     assert point_in_region(30.5234, 50.4501, geometry)
     assert not point_in_region(32.0, 50.4501, geometry)
