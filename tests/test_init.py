@@ -172,7 +172,7 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
     assert hass.states.get(location_wind_direction_entity_id).state == "315.0"
     assert (
         hass.states.get(_entity_id(registry, "location-subentry-precipitation")).state
-        == "0.0"
+        == "0"
     )
     assert (
         hass.states.get(

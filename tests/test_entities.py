@@ -354,6 +354,7 @@ async def test_api_diagnostic_entities(hass: HomeAssistant) -> None:
     failures = UkrHMCConsecutiveUpdateFailuresSensor(coordinator, entry.entry_id)
     stale = UkrHMCDataStaleBinarySensor(coordinator, entry.entry_id)
     assert failures.native_value == 0
+    coordinator.last_successful_update = datetime.now(UTC)
     assert not stale.is_on
 
     coordinator.last_update_success = False
