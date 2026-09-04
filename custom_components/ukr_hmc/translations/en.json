@@ -217,8 +217,8 @@
       "global_radiation_attention": { "name": "Global radiation attention" },
       "global_fire_attention": { "name": "Global fire attention" },
       "api_available": { "name": "API available" },
-      "data_stale": { "name": "Data stale" }
-      ,"regional_weather_warning": { "name": "Regional weather warning" }
+      "data_stale": { "name": "Data stale" },
+      "regional_weather_warning": { "name": "Regional weather warning" }
     }
   }
 }

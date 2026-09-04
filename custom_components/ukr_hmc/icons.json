@@ -77,8 +77,8 @@
       "global_radiation_attention": { "default": "mdi:radioactive" },
       "global_fire_attention": { "default": "mdi:fire-alert" },
       "api_available": { "default": "mdi:cloud-check" },
-      "data_stale": { "default": "mdi:database-clock" }
-      ,"regional_weather_warning": { "default": "mdi:weather-lightning-rainy" }
+      "data_stale": { "default": "mdi:database-clock" },
+      "regional_weather_warning": { "default": "mdi:weather-lightning-rainy" }
     }
   }
 }
