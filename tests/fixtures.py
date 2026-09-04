@@ -19,6 +19,7 @@ from custom_components.ukr_hmc.api import (
     UkrHMCRadiationObservation,
     UkrHMCRadiationStation,
     UkrHMCStation,
+    UkrHMCWeatherWarning,
     UkrHMCWind,
 )
 from custom_components.ukr_hmc.const import (
@@ -192,6 +193,18 @@ LOCATION_DAILY_FORECAST = UkrHMCLocationForecastDay(
     weather_night="clear",
     weather_day="clear",
 )
+WEATHER_WARNING_UPDATED_AT = datetime(
+    2026, 9, 4, 13, 13, tzinfo=ZoneInfo("Europe/Kyiv")
+)
+WEATHER_WARNING = UkrHMCWeatherWarning(
+    region_id=1,
+    danger_level=1,
+    phenomenon_code=8,
+    description="пориви 15-20 м/с",
+    period="05.09 09:00 — 21:00",
+    starts_at=None,
+    ends_at=None,
+)
 DATA = UkrHMCData.create(
     stations={
         STATION.station_id: STATION,
@@ -218,6 +231,8 @@ DATA = UkrHMCData.create(
         "attns_radio": False,
         "attns_fire": True,
     },
+    weather_warnings_updated_at=WEATHER_WARNING_UPDATED_AT,
+    regional_weather_warnings={1: (WEATHER_WARNING,)},
 )
 
 STATION_SUBENTRY_DATA = {

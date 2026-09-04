@@ -24,6 +24,7 @@ from custom_components.ukr_hmc.api.const import (
     QUERY_LOCATION,
     RADIATION_DATA_PATH,
     RADIATION_STATION_CATALOG_PATH,
+    REGIONAL_WEATHER_WARNINGS_PATH,
     REQUEST_HEADERS,
 )
 from custom_components.ukr_hmc.api.parsers import (
@@ -39,6 +40,7 @@ from custom_components.ukr_hmc.api.parsers import (
     parse_observations,
     parse_radiation_observations,
     parse_radiation_station_catalog,
+    parse_regional_weather_warnings,
     parse_station_catalog,
 )
 
@@ -92,6 +94,26 @@ ALERT_PAYLOAD = {
     "attns_snigo": 0,
     "attns_radio": 0,
     "attns_fire": 1,
+}
+WEATHER_WARNING_PAYLOAD = {
+    "UPD": "04.09.2026, 13:13",
+    "OBJ": [
+        [],
+        [
+            {
+                "R": 1,
+                "L": 1,
+                "A": [
+                    {
+                        "T": 8,
+                        "P": "05.09 09:00 &mdash; 21:00",
+                        "D": "пориви 15-20 м/с",
+                    }
+                ],
+            }
+        ],
+        [],
+    ],
 }
 
 
@@ -269,6 +291,19 @@ def test_parse_alert_flags() -> None:
     }
 
 
+def test_parse_regional_weather_warnings() -> None:
+    updated_at, warnings = parse_regional_weather_warnings(WEATHER_WARNING_PAYLOAD)
+
+    warning = warnings[1][0]
+    assert updated_at.isoformat() == "2026-09-04T13:13:00+03:00"
+    assert warning.description == "пориви 15-20 м/с"
+    assert warning.phenomenon_code == 8
+    assert warning.danger_level == 1
+    assert warning.period == "05.09 09:00 — 21:00"
+    assert warning.starts_at.isoformat() == "2026-09-05T09:00:00+03:00"
+    assert warning.ends_at.isoformat() == "2026-09-05T21:00:00+03:00"
+
+
 def _hourly_payload(
     *,
     point: str = "50.4501,30.5234",
@@ -357,6 +392,8 @@ async def test_data_snapshot_keys_empty_forecast_by_caller_id() -> None:
             return {}
         if path == DAY_NIGHT_PATH:
             return ALERT_PAYLOAD
+        if path == REGIONAL_WEATHER_WARNINGS_PATH:
+            return WEATHER_WARNING_PAYLOAD
         assert path == CITY_API_PATH
         assert params is not None
         return _hourly_payload(forecasts=[])
@@ -594,6 +631,7 @@ def test_parse_night_station_ids() -> None:
         (parse_lookups, ("const METEO_ICONS_TITLES = {};", WIND_SCRIPT)),
         (parse_location_daily_forecasts, ({},)),
         (parse_alert_flags, ({},)),
+        (parse_regional_weather_warnings, ({},)),
         (parse_night_station_ids, ({"dn": {"invalid": 1}},)),
     ],
 )
@@ -615,6 +653,8 @@ def test_data_snapshot_copies_input_mappings() -> None:
         hydrology_posts=dict(DATA.hydrology_posts),
         hydrology_observations=dict(DATA.hydrology_observations),
         alert_flags=dict(DATA.alert_flags),
+        weather_warnings_updated_at=DATA.weather_warnings_updated_at,
+        regional_weather_warnings=dict(DATA.regional_weather_warnings),
     )
 
     stations.clear()

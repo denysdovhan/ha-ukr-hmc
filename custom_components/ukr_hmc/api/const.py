@@ -13,6 +13,7 @@ HYDROLOGY_POST_CATALOG_PATH: Final = "/ua/_hydro-posts.js"
 ICON_LOOKUP_PATH: Final = "/ua/_meteo-icons.js"
 RADIATION_DATA_PATH: Final = "/_/m/radioday.js"
 RADIATION_STATION_CATALOG_PATH: Final = "/ua/_radio-posts.js"
+REGIONAL_WEATHER_WARNINGS_PATH: Final = "/ua/_attns-meteo.json"
 STATION_CATALOG_PATH: Final = "/ua/_meteo-stations.js"
 WIND_LOOKUP_PATH: Final = "/ua/_meteo-winds.js"
 
@@ -159,6 +160,16 @@ ALERT_FLAG_KEYS: Final = (
     "attns_radio",
     "attns_fire",
 )
+
+# Regional weather warning keys.
+WEATHER_WARNINGS_UPDATED_KEY: Final = "UPD"
+WEATHER_WARNINGS_GROUPS_KEY: Final = "OBJ"
+WEATHER_WARNING_REGION_KEY: Final = "R"
+WEATHER_WARNING_LEVEL_KEY: Final = "L"
+WEATHER_WARNING_ALERTS_KEY: Final = "A"
+WEATHER_WARNING_CODE_KEY: Final = "T"
+WEATHER_WARNING_PERIOD_KEY: Final = "P"
+WEATHER_WARNING_DESCRIPTION_KEY: Final = "D"
 
 # Provider enum values.
 CLOUD_CONDITION_SELECTOR: Final = 0

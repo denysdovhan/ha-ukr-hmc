@@ -80,7 +80,7 @@ This integration allows creating these entities:
 | Radiation monitoring station | Direct µR/h and nSv/h readings with observation time                                           | —                   |
 | Hydrology post               | Daily water measurements and the provider's hydrological situation                             | —                   |
 
-The integration also exposes five provider-global attention flags as binary sensors. They indicate attention to a weather, hydrology, snow, radiation, or fire product, but are not regional warnings and do not include severity or validity times.
+The integration also exposes five provider-global attention flags as binary sensors. They indicate attention to a weather, hydrology, snow, radiation, or fire product. In addition, every physical weather station gets a regional meteorological warning binary sensor with the oblast, danger level, warning text, phenomenon code, and validity period published by UkrHMC.
 
 ### Weather
 
@@ -114,6 +114,8 @@ Weather locations expose current precipitation. Physical stations also expose su
 | Sunrise / sunset                             |       ✅        |        —         | Timestamp sensors.                                                                                                                                   |
 | Phenomenon / indicator code                  |       ✅        |        —         | Provider service codes; disabled by default.                                                                                                         |
 | Detailed forecast                            |       ✅        |        —         | Diagnostic attributes with day/night temperature ranges, precipitation text, cloudiness, wind ranges, sunrise, sunset, and provider code.            |
+| Regional weather warning                     |       ✅        |        —         | Problem sensor active only during a current warning, with text, codes, timing, and active/future counts in attributes.                              |
+| Regional weather warning level               |       ✅        |        —         | Enum sensor with `none`, `yellow`, `orange`, or `red`, suitable for dashboards and automations.                                                     |
 
 Hourly forecasts are available only for a configured **weather location**. They come directly from the UkrHMC `dataDetailed` point-forecast product and may include temperature, condition, precipitation, pressure, humidity, dew point, wind speed, gust, and direction when the provider publishes them. Home Assistant exposes forecasts through the weather entity forecast service and forecast-capable dashboard cards, not as one sensor per hour.
 
@@ -144,6 +146,8 @@ The shared UkrHMC service device exposes:
 | Data stale                                                     | Problem sensor activated when the last successful complete update is older than 45 minutes.                               |
 | Consecutive update failures                                    | Number of failed provider updates since the latest successful refresh.                                                    |
 | Global weather, hydrology, snow, radiation, and fire attention | Direct provider-global flags. They are not regional warnings and contain no severity, text, or validity period.           |
+
+The regional weather warning sensor is attached to each configured physical weather station. Its state is on while at least one warning for that station's oblast is active. Attributes include `region`, active `level`, `level_name`, `active_count`, `future_count`, `next_start`, `next_end`, the provider update time, and a `warnings` list with description, phenomenon code, level, raw period, start, end, and status. The companion enum sensor exposes the highest active level as `none`, `yellow`, `orange`, or `red`. Exact map locations do not receive these entities because the point-forecast response does not provide a reliable oblast identifier.
 
 All data is polled through one shared coordinator every 15 minutes. The diagnostic update time is the moment Home Assistant successfully received the complete snapshot, not the observation time published by an individual station. Forecast summary sensors require complete provider hours for their selected horizon; they become unknown instead of treating missing precipitation as zero.
 

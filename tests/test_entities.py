@@ -24,6 +24,7 @@ from custom_components.ukr_hmc.binary_sensor import (
     UkrHMCAlertBinarySensor,
     UkrHMCApiAvailableBinarySensor,
     UkrHMCDataStaleBinarySensor,
+    UkrHMCRegionalWeatherWarningBinarySensor,
 )
 from custom_components.ukr_hmc.const import (
     CONFIGURATION_URL,
@@ -44,6 +45,7 @@ from custom_components.ukr_hmc.sensor import (
     UkrHMCLastSuccessfulUpdateSensor,
     UkrHMCLocationSummarySensor,
     UkrHMCRadiationSensor,
+    UkrHMCRegionalWeatherWarningLevelSensor,
     UkrHMCSensor,
     _daily_temperature,
     _maximum_gust,
@@ -330,6 +332,79 @@ async def test_global_attention_binary_sensors(hass: HomeAssistant) -> None:
     assert not sensors["attns_hydro"].is_on
     assert sensors["attns_fire"].is_on
     assert sensors["attns_meteo"].device_info["model"] == "UkrHMC Service"
+
+
+async def test_regional_weather_warning_binary_sensor(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    now = datetime.now(UTC)
+    warning = replace(
+        DATA.regional_weather_warnings[1][0],
+        starts_at=now - timedelta(hours=1),
+        ends_at=now + timedelta(hours=1),
+    )
+    coordinator.async_set_updated_data(
+        replace(DATA, regional_weather_warnings={1: (warning,)})
+    )
+    subentry = next(iter(entry.subentries.values()))
+    sensor = UkrHMCRegionalWeatherWarningBinarySensor(coordinator, subentry)
+
+    assert sensor.is_on
+    assert sensor.extra_state_attributes == {
+        "region": "Київська",
+        "level": 1,
+        "level_name": "yellow",
+        "active_count": 1,
+        "future_count": 0,
+        "next_start": None,
+        "next_end": warning.ends_at.isoformat(),
+        "updated_at": DATA.weather_warnings_updated_at.isoformat(),
+        "warnings": [
+            {
+                "description": "пориви 15-20 м/с",
+                "phenomenon_code": 8,
+                "level": 1,
+                "level_name": "yellow",
+                "period": "05.09 09:00 — 21:00",
+                "starts_at": warning.starts_at.isoformat(),
+                "ends_at": warning.ends_at.isoformat(),
+                "status": "active",
+            }
+        ],
+    }
+
+    level_sensor = UkrHMCRegionalWeatherWarningLevelSensor(coordinator, subentry)
+    assert level_sensor.native_value == "yellow"
+    assert level_sensor.device_class is SensorDeviceClass.ENUM
+    assert level_sensor.options == ["none", "yellow", "orange", "red"]
+
+    future_warning = replace(
+        warning,
+        danger_level=2,
+        starts_at=now + timedelta(hours=2),
+        ends_at=now + timedelta(hours=3),
+    )
+    coordinator.async_set_updated_data(
+        replace(DATA, regional_weather_warnings={1: (future_warning,)})
+    )
+    assert not sensor.is_on
+    assert sensor.extra_state_attributes["active_count"] == 0
+    assert sensor.extra_state_attributes["future_count"] == 1
+    assert (
+        sensor.extra_state_attributes["next_start"]
+        == future_warning.starts_at.isoformat()
+    )
+    assert (
+        sensor.extra_state_attributes["next_end"] == future_warning.ends_at.isoformat()
+    )
+    assert sensor.extra_state_attributes["warnings"][0]["status"] == "future"
+    assert level_sensor.native_value == "none"
+
+    coordinator.async_set_updated_data(replace(DATA, regional_weather_warnings={}))
+    assert sensor.available
+    assert not sensor.is_on
+    assert sensor.extra_state_attributes["level_name"] == "none"
+    assert level_sensor.native_value == "none"
 
 
 async def test_api_diagnostic_entities(hass: HomeAssistant) -> None:

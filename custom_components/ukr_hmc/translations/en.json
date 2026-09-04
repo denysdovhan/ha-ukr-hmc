@@ -207,7 +207,8 @@
       "temperature_tomorrow_min": { "name": "Minimum temperature tomorrow" },
       "temperature_tomorrow_max": { "name": "Maximum temperature tomorrow" },
       "maximum_wind_gust_next_24h": { "name": "Maximum wind gust next 24 hours" },
-      "maximum_wind_gust_time": { "name": "Maximum wind gust time" }
+      "maximum_wind_gust_time": { "name": "Maximum wind gust time" },
+      "regional_weather_warning_level": { "name": "Regional weather warning level" }
     },
     "binary_sensor": {
       "global_weather_attention": { "name": "Global weather attention" },
@@ -217,6 +218,7 @@
       "global_fire_attention": { "name": "Global fire attention" },
       "api_available": { "name": "API available" },
       "data_stale": { "name": "Data stale" }
+      ,"regional_weather_warning": { "name": "Regional weather warning" }
     }
   }
 }

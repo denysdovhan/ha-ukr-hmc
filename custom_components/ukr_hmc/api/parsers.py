@@ -3,7 +3,8 @@
 import json
 import re
 from collections.abc import Mapping
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
+from html import unescape
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -100,6 +101,14 @@ from .const import (
     STATIONS_VARIABLE,
     SUNRISE_KEY,
     SUNSET_KEY,
+    WEATHER_WARNING_ALERTS_KEY,
+    WEATHER_WARNING_CODE_KEY,
+    WEATHER_WARNING_DESCRIPTION_KEY,
+    WEATHER_WARNING_LEVEL_KEY,
+    WEATHER_WARNING_PERIOD_KEY,
+    WEATHER_WARNING_REGION_KEY,
+    WEATHER_WARNINGS_GROUPS_KEY,
+    WEATHER_WARNINGS_UPDATED_KEY,
     WIND_ABBREVIATION_KEY,
     WIND_NAME_KEY,
     WINDS_VARIABLE,
@@ -116,6 +125,7 @@ from .models import (
     UkrHMCRadiationObservation,
     UkrHMCRadiationStation,
     UkrHMCStation,
+    UkrHMCWeatherWarning,
     UkrHMCWind,
 )
 
@@ -125,6 +135,102 @@ STATION_CATALOG_PATTERN = re.compile(
     rf"const {STATIONS_VARIABLE}\s*=\s*(\{{.*\}});?\s*$",
     re.DOTALL,
 )
+WEATHER_WARNING_PERIOD_PATTERN = re.compile(
+    r"(?P<day>\d{2})\.(?P<month>\d{2})\s+"
+    r"(?P<start>\d{2}:\d{2})\s*[—–-]\s*(?P<end>\d{2}:\d{2})"
+)
+JANUARY = 1
+DECEMBER = 12
+
+
+def _require_list(value: object) -> list[Any]:
+    """Return a provider list or reject the payload."""
+    if not isinstance(value, list):
+        raise TypeError
+    return value
+
+
+def _require_mapping(value: object) -> Mapping[str, Any]:
+    """Return a provider mapping or reject the payload."""
+    if not isinstance(value, Mapping):
+        raise TypeError
+    return value
+
+
+def _parse_warning_period(
+    value: object, updated_at: datetime
+) -> tuple[str, datetime | None, datetime | None]:
+    """Parse the provider's compact local validity interval."""
+    period = unescape(str(value)).strip()
+    match = WEATHER_WARNING_PERIOD_PATTERN.fullmatch(period)
+    if match is None:
+        return period, None, None
+
+    month = int(match["month"])
+    year = updated_at.year
+    if updated_at.month == DECEMBER and month == JANUARY:
+        year += 1
+    elif updated_at.month == JANUARY and month == DECEMBER:
+        year -= 1
+    try:
+        start = datetime.strptime(
+            f"{year}-{month:02d}-{match['day']} {match['start']}",
+            "%Y-%m-%d %H:%M",
+        ).replace(tzinfo=UKRAINE_TIME_ZONE)
+        end = datetime.strptime(
+            f"{year}-{month:02d}-{match['day']} {match['end']}",
+            "%Y-%m-%d %H:%M",
+        ).replace(tzinfo=UKRAINE_TIME_ZONE)
+    except ValueError:
+        return period, None, None
+    if end < start:
+        end += timedelta(days=1)
+    return period, start, end
+
+
+def parse_regional_weather_warnings(
+    payload: Mapping[str, Any],
+) -> tuple[datetime, dict[int, tuple[UkrHMCWeatherWarning, ...]]]:
+    """Parse regional meteorological warnings and their validity periods."""
+    try:
+        updated_at = datetime.strptime(
+            str(payload[WEATHER_WARNINGS_UPDATED_KEY]), "%d.%m.%Y, %H:%M"
+        ).replace(tzinfo=UKRAINE_TIME_ZONE)
+        groups = _require_list(payload[WEATHER_WARNINGS_GROUPS_KEY])
+        warnings: dict[int, list[UkrHMCWeatherWarning]] = {}
+        for group_value in groups:
+            for region_value in _require_list(group_value):
+                region = _require_mapping(region_value)
+                region_id = int(region[WEATHER_WARNING_REGION_KEY])
+                danger_level = int(region[WEATHER_WARNING_LEVEL_KEY])
+                alerts = _require_list(region[WEATHER_WARNING_ALERTS_KEY])
+                for alert_value in alerts:
+                    alert = _require_mapping(alert_value)
+                    period, starts_at, ends_at = _parse_warning_period(
+                        alert[WEATHER_WARNING_PERIOD_KEY], updated_at
+                    )
+                    warnings.setdefault(region_id, []).append(
+                        UkrHMCWeatherWarning(
+                            region_id=region_id,
+                            danger_level=danger_level,
+                            phenomenon_code=_optional_int(
+                                alert, WEATHER_WARNING_CODE_KEY
+                            ),
+                            description=unescape(
+                                str(alert[WEATHER_WARNING_DESCRIPTION_KEY])
+                            ).strip(),
+                            period=period,
+                            starts_at=starts_at,
+                            ends_at=ends_at,
+                        )
+                    )
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = "Invalid regional weather warning data"
+        raise UkrHMCDataError(msg) from exc
+    return updated_at, {
+        region_id: tuple(region_warnings)
+        for region_id, region_warnings in warnings.items()
+    }
 
 
 def _parse_js_assignment(script: str, variable: str) -> Any:

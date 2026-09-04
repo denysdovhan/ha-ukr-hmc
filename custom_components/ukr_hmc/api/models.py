@@ -221,6 +221,29 @@ class UkrHMCForecastDay:
 
 
 @dataclass(frozen=True, slots=True)
+class UkrHMCWeatherWarning:
+    """Regional meteorological warning published by the provider."""
+
+    region_id: int
+    danger_level: int
+    phenomenon_code: int | None
+    description: str
+    period: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+
+    def is_active(self, now: datetime) -> bool:
+        """Return whether the warning is active at the supplied instant."""
+        if self.starts_at is not None and now < self.starts_at:
+            return False
+        return self.ends_at is None or now <= self.ends_at
+
+    def is_future(self, now: datetime) -> bool:
+        """Return whether the warning starts after the supplied instant."""
+        return self.starts_at is not None and now < self.starts_at
+
+
+@dataclass(frozen=True, slots=True)
 class UkrHMCData:
     """Complete provider snapshot."""
 
@@ -234,6 +257,8 @@ class UkrHMCData:
     hydrology_posts: Mapping[int, UkrHMCHydrologyPost]
     hydrology_observations: Mapping[int, UkrHMCHydrologyObservation]
     alert_flags: Mapping[str, bool]
+    weather_warnings_updated_at: datetime | None
+    regional_weather_warnings: Mapping[int, tuple[UkrHMCWeatherWarning, ...]]
 
     @classmethod
     def create(  # noqa: PLR0913
@@ -249,6 +274,9 @@ class UkrHMCData:
         hydrology_posts: dict[int, UkrHMCHydrologyPost],
         hydrology_observations: dict[int, UkrHMCHydrologyObservation],
         alert_flags: dict[str, bool],
+        weather_warnings_updated_at: datetime | None = None,
+        regional_weather_warnings: dict[int, tuple[UkrHMCWeatherWarning, ...]]
+        | None = None,
     ) -> UkrHMCData:
         """Create an immutable provider snapshot."""
         return cls(
@@ -262,4 +290,8 @@ class UkrHMCData:
             hydrology_posts=MappingProxyType(dict(hydrology_posts)),
             hydrology_observations=MappingProxyType(dict(hydrology_observations)),
             alert_flags=MappingProxyType(dict(alert_flags)),
+            weather_warnings_updated_at=weather_warnings_updated_at,
+            regional_weather_warnings=MappingProxyType(
+                dict(regional_weather_warnings or {})
+            ),
         )

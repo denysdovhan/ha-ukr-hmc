@@ -54,8 +54,8 @@ types.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
 - `binary_sensor.py` - exposes API availability, stale-data diagnostics, and the
-  provider's five global attention flags once per config entry without treating
-  them as regional warnings.
+  provider's five global attention flags once per config entry, plus regional
+  meteorological warnings for physical weather stations.
 - `config_flow.py` - creates the single service entry and typed weather,
   radiation, and hydrology subentries.
 - `const.py` - integration constants, subentry types, and the 15-minute update
@@ -162,6 +162,12 @@ types.
   them once per config entry as problem-class binary sensors. They indicate only
   provider-global attention and must not be described as regional warnings,
   because the payload has no region, severity, text, or validity interval.
+- Parse `/ua/_attns-meteo.json` as the distinct regional meteorological warning
+  source. Join its region id to configured physical stations and expose one
+  problem binary sensor per station with severity, text, phenomenon code, and
+  validity attributes, plus an enum sensor for the highest active danger level.
+  Keep active/future counts and next validity boundaries automation-friendly.
+  Do not infer an oblast for exact map locations.
 - The wind-direction sensor exposes degrees with the native wind-direction device
   class. For location current values, map the direct `WindCompass8` value through
   the provider bearing mapping and also expose the raw compass value separately.
@@ -202,6 +208,8 @@ Current supported endpoints are:
 - `/ua/_meteo-stations.js` - region and physical-station catalog.
 - `/ua/_radio-posts.js` - radiation monitoring station catalog.
 - `/ua/_hydro-posts.js` - hydrology post and river catalog.
+- `/ua/_attns-meteo.json` - regional meteorological warnings with danger level,
+  text, phenomenon code, and validity interval.
 - `/ua/_meteo-icons.js` and `/ua/_meteo-winds.js` - condition and wind lookups.
 
 The `.js` endpoints contain JSON or JSON-compatible assignments despite their
@@ -209,7 +217,7 @@ extension and content type. Bare requests have returned HTTP 403 during live
 validation; preserve the honest browser-like user agent and meteo.gov.ua referer
 in `api/const.py`, and re-verify live behavior before changing request logic.
 
-Treat the automatic hydrology, snow, avalanche, and alert endpoints documented
+Treat the automatic hydrology, snow, and avalanche endpoints documented
 in `meteo.md` as research only. They are outside the implemented scope unless
 the user explicitly expands it. Use `Europe/Kyiv` for provider-local dates and
 times.

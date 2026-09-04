@@ -67,7 +67,8 @@
       "temperature_tomorrow_min": { "default": "mdi:thermometer-low" },
       "temperature_tomorrow_max": { "default": "mdi:thermometer-high" },
       "maximum_wind_gust_next_24h": { "default": "mdi:weather-windy" },
-      "maximum_wind_gust_time": { "default": "mdi:weather-windy-variant" }
+      "maximum_wind_gust_time": { "default": "mdi:weather-windy-variant" },
+      "regional_weather_warning_level": { "default": "mdi:alert-decagram" }
     },
     "binary_sensor": {
       "global_weather_attention": { "default": "mdi:weather-lightning" },
@@ -77,6 +78,7 @@
       "global_fire_attention": { "default": "mdi:fire-alert" },
       "api_available": { "default": "mdi:cloud-check" },
       "data_stale": { "default": "mdi:database-clock" }
+      ,"regional_weather_warning": { "default": "mdi:weather-lightning-rainy" }
     }
   }
 }

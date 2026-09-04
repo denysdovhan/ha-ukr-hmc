@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, override
 from zoneinfo import ZoneInfo
 
@@ -84,6 +84,60 @@ class UkrHMCHydrologySensorDescription(SensorEntityDescription):
     """Describe a current hydrology sensor."""
 
     value_fn: Callable[[UkrHMCHydrologyObservation], StateType | datetime]
+
+
+WARNING_LEVEL_OPTIONS = ("none", "yellow", "orange", "red")
+WARNING_LEVEL_NAMES = {1: "yellow", 2: "orange", 3: "red"}
+REGIONAL_WEATHER_WARNING_LEVEL_SENSOR = SensorEntityDescription(
+    key="regional_weather_warning_level",
+    translation_key="regional_weather_warning_level",
+    device_class=SensorDeviceClass.ENUM,
+    options=list(WARNING_LEVEL_OPTIONS),
+)
+
+
+class UkrHMCRegionalWeatherWarningLevelSensor(UkrHMCEntity, SensorEntity):
+    """Expose the highest active regional weather-warning level."""
+
+    entity_description = REGIONAL_WEATHER_WARNING_LEVEL_SENSOR
+
+    def __init__(
+        self,
+        coordinator: UkrHMCCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialize the warning-level sensor."""
+        super().__init__(coordinator, subentry)
+        self._attr_unique_id = f"{subentry.subentry_id}-{self.entity_description.key}"
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the station catalog and latest snapshot are available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data.stations.get(self._station_id) is not None
+        )
+
+    @property
+    @override
+    def native_value(self) -> str:
+        """Return the highest currently active warning level."""
+        station = self.coordinator.data.stations.get(self._station_id)
+        if station is None:
+            return "none"
+        now = datetime.now(UTC)
+        level = max(
+            (
+                warning.danger_level
+                for warning in self.coordinator.data.regional_weather_warnings.get(
+                    station.region_id, ()
+                )
+                if warning.is_active(now)
+            ),
+            default=0,
+        )
+        return WARNING_LEVEL_NAMES.get(level, "none")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -848,7 +902,10 @@ async def async_setup_entry(
         )
         if subentry.subentry_type == SUBENTRY_TYPE_WEATHER_STATION:
             async_add_entities(
-                [UkrHMCForecastDetailsSensor(coordinator, subentry)],
+                [
+                    UkrHMCForecastDetailsSensor(coordinator, subentry),
+                    UkrHMCRegionalWeatherWarningLevelSensor(coordinator, subentry),
+                ],
                 config_subentry_id=subentry.subentry_id,
             )
         elif subentry.subentry_type == SUBENTRY_TYPE_WEATHER_LOCATION:

@@ -180,6 +180,20 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
         ).state
         == "on"
     )
+    regional_warning = hass.states.get(
+        _entity_id(
+            registry, "station-subentry-regional_weather_warning", "binary_sensor"
+        )
+    )
+    assert regional_warning.state == "on"
+    assert regional_warning.attributes["region"] == "Київська"
+    assert regional_warning.attributes["level_name"] == "yellow"
+    assert (
+        hass.states.get(
+            _entity_id(registry, "station-subentry-regional_weather_warning_level")
+        ).state
+        == "yellow"
+    )
     assert hass.states.get(radiation_exposure_dose_rate_entity_id).state == "11"
     assert hass.states.get(radiation_dose_rate_entity_id).state == "96"
     assert hass.states.get(hydrology_water_level_entity_id).state == "444.0"

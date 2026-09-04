@@ -27,6 +27,7 @@ from .const import (
     QUERY_LOCATION,
     RADIATION_DATA_PATH,
     RADIATION_STATION_CATALOG_PATH,
+    REGIONAL_WEATHER_WARNINGS_PATH,
     REQUEST_HEADERS,
     REQUEST_TIMEOUT,
     STATION_CATALOG_PATH,
@@ -58,6 +59,7 @@ from .parsers import (
     parse_observations,
     parse_radiation_observations,
     parse_radiation_station_catalog,
+    parse_regional_weather_warnings,
     parse_station_catalog,
 )
 
@@ -248,6 +250,8 @@ class UkrHMCClient:
         radiation_observations = {}
         hydrology_posts = {}
         hydrology_observations = {}
+        weather_warnings_updated_at = None
+        regional_weather_warnings = {}
         day_night = await self._get_json(DAY_NIGHT_PATH)
         alert_flags = parse_alert_flags(day_night)
         if include_station_data:
@@ -256,15 +260,21 @@ class UkrHMCClient:
                 lookups,
                 current,
                 forecast_payload,
+                warning_payload,
             ) = await asyncio.gather(
                 self.async_get_stations(),
                 self._async_get_lookups(),
                 self._get_json(CURRENT_PATH),
                 self._get_json(FORECAST_PATH),
+                self._get_json(REGIONAL_WEATHER_WARNINGS_PATH),
             )
             observations = parse_observations(current, lookups)
             forecasts = parse_forecasts(forecast_payload, lookups)
             night_station_ids = parse_night_station_ids(day_night)
+            (
+                weather_warnings_updated_at,
+                regional_weather_warnings,
+            ) = parse_regional_weather_warnings(warning_payload)
         if include_radiation_data:
             (
                 radiation_stations,
@@ -294,4 +304,6 @@ class UkrHMCClient:
             hydrology_posts=hydrology_posts,
             hydrology_observations=hydrology_observations,
             alert_flags=alert_flags,
+            weather_warnings_updated_at=weather_warnings_updated_at,
+            regional_weather_warnings=regional_weather_warnings,
         )

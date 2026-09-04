@@ -451,6 +451,14 @@ The `.js` extension does not mean you must evaluate JavaScript. The body is plai
 
 ## Endpoint notes (additional probing)
 
+- On 2026-09-04, `/ua/_attns-meteo.json` returned the live regional
+  meteorological warning feed. `UPD` is the provider update time and `OBJ`
+  contains day-grouped oblast records. Each oblast record uses `R` for region,
+  `L` for danger level, and `A` for warnings; each warning uses `T` for the
+  phenomenon code, `P` for the validity interval, and `D` for description.
+  The integration joins `R` to the physical station catalog's oblast id and
+  preserves every warning instead of relying on the map polygon URL.
+
 - `/_/m/hydroday.js?4` appears to return the **same JSON** as `/_/m/hydroday.js?75` (at least on 2026‑02‑02). The numeric query likely selects a layer or map scope, but both returned identical data in this probe.
 - On 2026-08-06, the hydrology catalog contained 237 posts, while the daily
   snapshot intersected it at 177 posts with usable current data. The snapshot

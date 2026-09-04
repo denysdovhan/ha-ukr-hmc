@@ -16,6 +16,7 @@ from .models import (
     UkrHMCRadiationObservation,
     UkrHMCRadiationStation,
     UkrHMCStation,
+    UkrHMCWeatherWarning,
     UkrHMCWind,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "UkrHMCRadiationObservation",
     "UkrHMCRadiationStation",
     "UkrHMCStation",
+    "UkrHMCWeatherWarning",
     "UkrHMCWind",
 ]

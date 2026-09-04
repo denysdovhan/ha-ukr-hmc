@@ -207,7 +207,8 @@
       "temperature_tomorrow_min": { "name": "Мінімальна температура завтра" },
       "temperature_tomorrow_max": { "name": "Максимальна температура завтра" },
       "maximum_wind_gust_next_24h": { "name": "Максимальний порив вітру за наступні 24 години" },
-      "maximum_wind_gust_time": { "name": "Час максимального пориву вітру" }
+      "maximum_wind_gust_time": { "name": "Час максимального пориву вітру" },
+      "regional_weather_warning_level": { "name": "Рівень регіонального метеорологічного попередження" }
     },
     "binary_sensor": {
       "global_weather_attention": { "name": "Загальне метеорологічне попередження" },
@@ -217,6 +218,7 @@
       "global_fire_attention": { "name": "Загальне попередження про пожежну небезпеку" },
       "api_available": { "name": "API доступний" },
       "data_stale": { "name": "Дані застаріли" }
+      ,"regional_weather_warning": { "name": "Регіональне метеорологічне попередження" }
     }
   }
 }
