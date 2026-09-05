@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, override
 
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, CONF_NAME
@@ -15,9 +17,11 @@ from .api import (
     UkrHMCLocationForecastRequest,
 )
 from .const import (
+    CONF_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
+    SUBENTRY_TYPE_SNOW_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
     UPDATE_INTERVAL,
@@ -48,9 +52,25 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
             LOGGER,
             config_entry=config_entry,
             name=DOMAIN,
-            update_interval=UPDATE_INTERVAL,
+            update_interval=timedelta(
+                minutes=int(
+                    config_entry.options.get(
+                        CONF_UPDATE_INTERVAL_MINUTES,
+                        UPDATE_INTERVAL.total_seconds() // 60,
+                    )
+                )
+            ),
+            always_update=False,
         )
         self._api = api
+        self.last_successful_update: datetime | None = None
+        self.consecutive_update_failures = 0
+
+    @property
+    def source_availability(self) -> Mapping[str, bool]:
+        """Return product-level availability from the latest refresh."""
+        availability = getattr(self._api, "source_availability", {})
+        return availability if isinstance(availability, Mapping) else {}
 
     @override
     async def _async_update_data(self) -> UkrHMCData:
@@ -77,11 +97,21 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
                 subentry.subentry_type == SUBENTRY_TYPE_HYDROLOGY_POST
                 for subentry in self.config_entry.subentries.values()
             )
-            return await self._api.async_get_data(
+            include_snow_data = any(
+                subentry.subentry_type == SUBENTRY_TYPE_SNOW_STATION
+                for subentry in self.config_entry.subentries.values()
+            )
+            data = await self._api.async_get_data(
                 location_forecasts,
                 include_station_data=include_station_data,
                 include_radiation_data=include_radiation_data,
                 include_hydrology_data=include_hydrology_data,
+                include_snow_data=include_snow_data,
             )
         except UkrHMCError as exc:
+            self.consecutive_update_failures += 1
             raise UpdateFailed(str(exc)) from exc
+        else:
+            self.last_successful_update = datetime.now(UTC)
+            self.consecutive_update_failures = 0
+            return data

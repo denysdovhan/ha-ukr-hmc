@@ -1,7 +1,7 @@
 ---
 title: Initial UkrHMC integration
 date: 2026-07-30
-status: wip
+status: done
 related_paths:
   - custom_components/ukr_hmc/
   - tests/

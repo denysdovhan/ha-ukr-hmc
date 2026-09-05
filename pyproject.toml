@@ -5,7 +5,7 @@ description = "Home Assistant custom component: Ukrainian Hydrometeorological Ce
 readme = "readme.md"
 requires-python = ">=3.14.2"
 authors = [{ name = "Denys Dovhan", email = "denysdovhan@gmail.com" }]
-dependencies = ["homeassistant==2026.8.3"]
+dependencies = ["homeassistant==2026.9.0"]
 
 [dependency-groups]
 dev = [
@@ -27,6 +27,7 @@ ignore = [
   "D203", # no-blank-line-before-class (incompatible with formatter)
   "D212", # multi-line-summary-first-line (incompatible with formatter)
   "COM812", # incompatible with formatter
+  "CPY001", # repository does not require per-file copyright notices
   "ISC001", # incompatible with formatter
   "FIX002", # Line contains TODO, consider resolving an issue
   "TD003", # Missing issue link on the line following this TODO

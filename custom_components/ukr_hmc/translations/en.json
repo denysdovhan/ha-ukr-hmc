@@ -4,18 +4,33 @@
     "step": {
       "user": {
         "title": "Connect to UkrHMC",
-        "description": "Choose a weather station, weather location, radiation monitoring station, or hydrology post.",
+        "description": "Choose a weather station, weather location, radiation monitoring station, hydrology post, or snow and avalanche station.",
         "menu_options": {
           "weather_station": "Weather station",
           "weather_location": "Weather location",
           "radiation_station": "Radiation monitoring station",
-          "hydrology_post": "Hydrology post"
+          "hydrology_post": "Hydrology post",
+          "snow_station": "Snow and avalanche station"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to the Ukrainian Hydrometeorological Center.",
       "no_stations": "The Ukrainian Hydrometeorological Center returned no stations."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update settings",
+        "description": "Configure how often the public UkrHMC API is polled.",
+        "data": {
+          "update_interval_minutes": "Update interval in minutes"
+        },
+        "data_description": {
+          "update_interval_minutes": "Allowed range: 5 to 30 minutes. The default is 15 minutes."
+        }
+      }
     }
   },
   "config_subentries": {
@@ -102,6 +117,27 @@
       },
       "entry_type": "Radiation monitoring station"
     },
+    "snow_station": {
+      "step": {
+        "user": {
+          "title": "Add a snow and avalanche station",
+          "description": "Snow cover and mountain weather observations from UkrHMC.",
+          "data": { "name": "Name", "station_id": "Snow and avalanche station" },
+          "data_description": {
+            "name": "Name in Home Assistant.",
+            "station_id": "Only stations with a provider record are shown."
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "Unable to connect to UkrHMC.",
+        "invalid_station": "The selected snow station is no longer available.",
+        "no_stations": "UkrHMC returned no snow stations."
+      },
+      "abort": { "already_configured": "This snow station is already configured." },
+      "initiate_flow": { "user": "Add a snow and avalanche station" },
+      "entry_type": "Snow and avalanche station"
+    },
     "hydrology_post": {
       "step": {
         "user": {
@@ -154,6 +190,11 @@
       "water_temperature": {
         "name": "Water temperature"
       },
+      "snow_depth": { "name": "Snow depth" },
+      "snow_depth_change": { "name": "Snow depth change" },
+      "cloudiness": { "name": "Cloudiness" },
+      "weather_phenomena": { "name": "Weather phenomena" },
+      "observation_date": { "name": "Observation date" },
       "hydrological_situation": {
         "name": "Hydrological situation",
         "state": {
@@ -170,6 +211,7 @@
       "temperature": {
         "name": "Temperature"
       },
+      "apparent_temperature": { "name": "Feels like" },
       "humidity": {
         "name": "Humidity"
       },
@@ -187,6 +229,123 @@
       },
       "observation_time": {
         "name": "Data time"
+      },
+      "precipitation": { "name": "Current precipitation" },
+      "sunrise": { "name": "Sunrise" },
+      "sunset": { "name": "Sunset" },
+      "phenomenon_code": { "name": "Provider phenomenon code" },
+      "indicator_code": { "name": "Provider indicator code" },
+      "forecast_details": { "name": "Detailed forecast" },
+      "last_successful_update": { "name": "Last successful update" },
+      "consecutive_update_failures": { "name": "Consecutive update failures" },
+      "precipitation_next_1h": { "name": "Precipitation next hour" },
+      "precipitation_next_3h": { "name": "Precipitation next 3 hours" },
+      "precipitation_next_6h": { "name": "Precipitation next 6 hours" },
+      "precipitation_next_12h": { "name": "Precipitation next 12 hours" },
+      "precipitation_next_24h": { "name": "Precipitation next 24 hours" },
+      "next_precipitation": { "name": "Next precipitation" },
+      "temperature_today_min": { "name": "Minimum temperature today" },
+      "temperature_today_max": { "name": "Maximum temperature today" },
+      "temperature_tomorrow_min": { "name": "Minimum temperature tomorrow" },
+      "temperature_tomorrow_max": { "name": "Maximum temperature tomorrow" },
+      "maximum_wind_gust_next_24h": { "name": "Maximum wind gust next 24 hours" },
+      "maximum_wind_gust_time": { "name": "Maximum wind gust time" },
+      "regional_weather_warning_level": { "name": "Regional weather warning level" },
+      "regional_fire_danger_level": {
+        "name": "Regional fire danger level",
+        "state": { "none": "None", "extreme": "Extreme", "prolonged_extreme": "Prolonged extreme" }
+      },
+      "regional_snow_danger_level": {
+        "name": "Regional avalanche danger level",
+        "state": {
+          "none": "None",
+          "low": "Low",
+          "moderate": "Moderate",
+          "considerable": "Considerable",
+          "high": "High",
+          "very_high": "Very high"
+        }
+      },
+      "hydrology_warning_level": {
+        "name": "Hydrological warning level",
+        "state": {
+          "none": "None",
+          "change_without_consequences": "Change without adverse consequences",
+          "danger_level_1": "Danger level I",
+          "danger_level_2": "Danger level II",
+          "danger_level_3": "Danger level III",
+          "danger_level_3_low_water": "Danger level III — low water"
+        }
+      }
+    },
+    "binary_sensor": {
+      "global_weather_attention": {
+        "name": "UkrHMC provider-wide meteorological attention indicator"
+      },
+      "global_hydrology_attention": {
+        "name": "UkrHMC provider-wide hydrological attention indicator"
+      },
+      "global_snow_attention": { "name": "UkrHMC provider-wide snow attention indicator" },
+      "global_radiation_attention": {
+        "name": "UkrHMC provider-wide radiation attention indicator"
+      },
+      "global_fire_attention": { "name": "UkrHMC provider-wide fire attention indicator" },
+      "api_available": { "name": "API available" },
+      "data_stale": { "name": "Data stale" },
+      "regional_weather_warning": { "name": "Regional weather warning" }
+    },
+    "calendar": {
+      "warning_calendar": { "name": "Weather warning calendar" },
+      "hydrology_warning_calendar": { "name": "Hydrological warning calendar" }
+    },
+    "event": {
+      "meteorological_warning_event": {
+        "name": "Meteorological warning changes",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "started": "Started",
+              "level_increased": "Level increased",
+              "ended": "Ended"
+            }
+          }
+        }
+      },
+      "fire_warning_event": {
+        "name": "Fire danger warning changes",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "started": "Started",
+              "level_increased": "Level increased",
+              "ended": "Ended"
+            }
+          }
+        }
+      },
+      "avalanche_warning_event": {
+        "name": "Avalanche warning changes",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "started": "Started",
+              "level_increased": "Level increased",
+              "ended": "Ended"
+            }
+          }
+        }
+      },
+      "hydrology_warning_event": {
+        "name": "Hydrological warning changes",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "started": "Started",
+              "level_increased": "Level increased",
+              "ended": "Ended"
+            }
+          }
+        }
       }
     }
   }

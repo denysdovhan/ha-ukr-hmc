@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -38,9 +40,34 @@ def _entity_id(
     return entity_id
 
 
-async def test_setup_creates_weather_and_current_sensors(
+async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
     hass: HomeAssistant,
 ) -> None:
+    now = datetime.now(UTC)
+    fresh_data = replace(
+        DATA,
+        observations={
+            key: replace(value, observed_at=now)
+            for key, value in DATA.observations.items()
+        },
+        location_forecasts={
+            key: replace(
+                value,
+                current=replace(value.current, forecast_at=now)
+                if value.current
+                else None,
+            )
+            for key, value in DATA.location_forecasts.items()
+        },
+        radiation_observations={
+            key: replace(value, observed_at=now)
+            for key, value in DATA.radiation_observations.items()
+        },
+        hydrology_observations={
+            key: replace(value, observed_at=now)
+            for key, value in DATA.hydrology_observations.items()
+        },
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         title=NAME,
@@ -57,7 +84,7 @@ async def test_setup_creates_weather_and_current_sensors(
 
     with patch(
         "custom_components.ukr_hmc.api.UkrHMCClient.async_get_data",
-        new=AsyncMock(return_value=DATA),
+        new=AsyncMock(return_value=fresh_data),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -66,13 +93,38 @@ async def test_setup_creates_weather_and_current_sensors(
     assert isinstance(entry.runtime_data, UkrHMCRuntimeData)
 
     registry = er.async_get(hass)
+    _entity_id(registry, f"{entry.entry_id}-api_available", "binary_sensor")
+    _entity_id(registry, f"{entry.entry_id}-data_stale", "binary_sensor")
+    _entity_id(registry, f"{entry.entry_id}-last_successful_update")
+    _entity_id(registry, f"{entry.entry_id}-consecutive_update_failures")
+    for key in (
+        "precipitation_next_1h",
+        "precipitation_next_3h",
+        "precipitation_next_6h",
+        "precipitation_next_12h",
+        "precipitation_next_24h",
+        "next_precipitation",
+        "temperature_today_min",
+        "temperature_today_max",
+        "temperature_tomorrow_min",
+        "temperature_tomorrow_max",
+        "maximum_wind_gust_next_24h",
+        "maximum_wind_gust_time",
+    ):
+        _entity_id(registry, f"location-subentry-{key}")
     weather_entity_id = _entity_id(registry, "station-subentry", "weather")
     temperature_entity_id = _entity_id(registry, "station-subentry-temperature")
+    station_apparent_temperature_entity_id = _entity_id(
+        registry, "station-subentry-apparent_temperature"
+    )
     condition_entity_id = _entity_id(registry, "station-subentry-condition")
     weather_description_entity_id = _entity_id(registry, "station-subentry-weather")
     location_weather_entity_id = _entity_id(registry, "location-subentry", "weather")
     location_temperature_entity_id = _entity_id(
         registry, "location-subentry-temperature"
+    )
+    location_apparent_temperature_entity_id = _entity_id(
+        registry, "location-subentry-apparent_temperature"
     )
     location_condition_entity_id = _entity_id(registry, "location-subentry-condition")
     location_weather_description_entity_id = _entity_id(
@@ -83,6 +135,33 @@ async def test_setup_creates_weather_and_current_sensors(
     )
     location_wind_direction_entity_id = _entity_id(
         registry, "location-subentry-wind_direction"
+    )
+    for unique_id in (
+        "station-subentry-sunrise",
+        "station-subentry-sunset",
+        "station-subentry-forecast_details",
+    ):
+        _entity_id(registry, unique_id)
+    for subentry_id in ("station-subentry", "location-subentry"):
+        _entity_id(registry, f"{subentry_id}-warning_calendar", "calendar")
+        _entity_id(registry, f"{subentry_id}-regional_fire_danger_level")
+        _entity_id(registry, f"{subentry_id}-regional_snow_danger_level")
+        for warning_type in ("meteorological", "fire", "avalanche"):
+            _entity_id(
+                registry,
+                f"{subentry_id}-{warning_type}-warning-event",
+                "event",
+            )
+    _entity_id(registry, "hydrology-subentry-hydrology_warning_level")
+    _entity_id(
+        registry,
+        "hydrology-subentry-hydrology_warning_calendar",
+        "calendar",
+    )
+    _entity_id(
+        registry,
+        "hydrology-subentry-hydrology-warning-event",
+        "event",
     )
     radiation_exposure_dose_rate_entity_id = _entity_id(
         registry,
@@ -135,16 +214,58 @@ async def test_setup_creates_weather_and_current_sensors(
     )
     assert hass.states.get(weather_entity_id).state == "partlycloudy"
     assert hass.states.get(temperature_entity_id).state == "25.9"
+    assert hass.states.get(station_apparent_temperature_entity_id).state == "24.0"
     assert hass.states.get(condition_entity_id).state == "partlycloudy"
     assert hass.states.get(weather_description_entity_id).state == (
         "Хмарно з проясненнями"
     )
     assert hass.states.get(location_weather_entity_id).state == "clear-night"
     assert hass.states.get(location_temperature_entity_id).state == "20"
+    assert hass.states.get(location_apparent_temperature_entity_id).state == "18.6"
     assert hass.states.get(location_condition_entity_id).state == "clear-night"
     assert hass.states.get(location_weather_description_entity_id).state == "Ясно"
     assert hass.states.get(location_wind_compass_entity_id).state == "NW"
     assert hass.states.get(location_wind_direction_entity_id).state == "315.0"
+    assert (
+        hass.states.get(_entity_id(registry, "location-subentry-precipitation")).state
+        == "0"
+    )
+    assert (
+        hass.states.get(
+            _entity_id(registry, f"{entry.entry_id}-attns_meteo", "binary_sensor")
+        ).state
+        == "on"
+    )
+    regional_warning = hass.states.get(
+        _entity_id(
+            registry, "station-subentry-regional_weather_warning", "binary_sensor"
+        )
+    )
+    assert regional_warning.state == "on"
+    assert regional_warning.attributes["region"] == "Київська"
+    assert regional_warning.attributes["level_name"] == "yellow"
+    assert (
+        hass.states.get(
+            _entity_id(registry, "station-subentry-regional_weather_warning_level")
+        ).state
+        == "yellow"
+    )
+    assert (
+        hass.states.get(
+            _entity_id(
+                registry,
+                "location-subentry-regional_weather_warning",
+                "binary_sensor",
+            )
+        ).state
+        == "on"
+    )
+    assert (
+        hass.states.get(
+            _entity_id(registry, "location-subentry-regional_weather_warning_level")
+        ).state
+        == "yellow"
+    )
     assert hass.states.get(radiation_exposure_dose_rate_entity_id).state == "11"
     assert hass.states.get(radiation_dose_rate_entity_id).state == "96"
     assert hass.states.get(hydrology_water_level_entity_id).state == "444.0"

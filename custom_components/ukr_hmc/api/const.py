@@ -1,18 +1,27 @@
 """Constants for the UkrHMC API client."""
 
+from datetime import timedelta
 from typing import Final
 
 # API endpoints.
 BASE_URL: Final = "https://www.meteo.gov.ua"
+CATALOG_CACHE_TTL: Final = timedelta(hours=24)
 CITY_API_PATH: Final = "/fmi.json"
 CURRENT_PATH: Final = "/_/m/current.js"
 DAY_NIGHT_PATH: Final = "/_/_e5m.json"
 FORECAST_PATH: Final = "/_/m/prognoz.js"
 HYDROLOGY_DATA_PATH: Final = "/_/m/hydroday.js"
 HYDROLOGY_POST_CATALOG_PATH: Final = "/ua/_hydro-posts.js"
+HYDROLOGY_WARNINGS_PATH: Final = "/ua/_attns-hydro.json"
+HYDROLOGY_WARNING_LOOKUP_PATH: Final = "/ua/_attns-hydro.js"
 ICON_LOOKUP_PATH: Final = "/ua/_meteo-icons.js"
 RADIATION_DATA_PATH: Final = "/_/m/radioday.js"
 RADIATION_STATION_CATALOG_PATH: Final = "/ua/_radio-posts.js"
+SNOW_DATA_PATH: Final = "/_/m/snigost.js"
+SNOW_STATION_CATALOG_PATH: Final = "/ua/_attns-snigo.js"
+REGIONAL_WEATHER_WARNINGS_PATH: Final = "/ua/_attns-meteo.json"
+REGIONAL_FIRE_WARNINGS_PATH: Final = "/ua/_attns-fire.json"
+REGIONAL_SNOW_WARNINGS_PATH: Final = "/ua/_attns-snigolav.json"
 STATION_CATALOG_PATH: Final = "/ua/_meteo-stations.js"
 WIND_LOOKUP_PATH: Final = "/ua/_meteo-winds.js"
 
@@ -34,6 +43,7 @@ HYDROLOGY_POSTS_VARIABLE: Final = "HYDRO_POSTS"
 REGIONS_VARIABLE: Final = "METEO_OBLASTI"
 STATIONS_VARIABLE: Final = "METEO_STATIONS"
 WINDS_VARIABLE: Final = "METEO_WINDS"
+SNOW_STATIONS_VARIABLE: Final = "ATTNS_STANTIONS"
 
 # Station record keys.
 STATION_ID_KEY: Final = "i"
@@ -69,6 +79,20 @@ HYDROLOGY_WATER_LEVEL_CHANGE_KEY: Final = "C_FR"
 HYDROLOGY_WATER_TEMPERATURE_KEY: Final = "TW"
 HYDROLOGY_LEVEL_CLASS_KEY: Final = "L"
 HYDROLOGY_OBSERVATION_HOUR: Final = 8
+
+# Snow/avalanche station record and observation keys.
+SNOW_STATION_COORDINATES_KEY: Final = "G"
+SNOW_STATION_NAME_KEY: Final = "T"
+SNOW_OBSERVATION_STATION_KEY: Final = "ST"
+SNOW_OBSERVATION_TEMPERATURE_KEY: Final = "TT"
+SNOW_OBSERVATION_DEPTH_KEY: Final = "SN"
+SNOW_OBSERVATION_DEPTH_CHANGE_KEY: Final = "SD"
+SNOW_OBSERVATION_WIND_DIRECTION_KEY: Final = "WD"
+SNOW_OBSERVATION_WIND_SPEED_KEY: Final = "WS"
+SNOW_OBSERVATION_HUMIDITY_KEY: Final = "VL"
+SNOW_OBSERVATION_CLOUDINESS_KEY: Final = "HT"
+SNOW_OBSERVATION_PHENOMENA_KEY: Final = "OT"
+SNOW_STATION_WITHOUT_WIND_ID: Final = 11
 
 # Wind record keys and bearings.
 WIND_ABBREVIATION_KEY: Final = "r"
@@ -152,6 +176,24 @@ FORECAST_PROVIDER_CODE_KEY: Final = "MP"
 SUNRISE_KEY: Final = "SR"
 SUNSET_KEY: Final = "SS"
 DAY_NIGHT_STATIONS_KEY: Final = "dn"
+ALERT_FLAG_KEYS: Final = (
+    "attns_meteo",
+    "attns_hydro",
+    "attns_snigo",
+    "attns_radio",
+    "attns_fire",
+)
+
+# Regional weather warning keys.
+WEATHER_WARNINGS_UPDATED_KEY: Final = "UPD"
+WEATHER_WARNINGS_GROUPS_KEY: Final = "OBJ"
+WEATHER_WARNING_REGION_KEY: Final = "R"
+WEATHER_WARNING_LEVEL_KEY: Final = "L"
+WEATHER_WARNING_ALERTS_KEY: Final = "A"
+WEATHER_WARNING_CODE_KEY: Final = "T"
+WEATHER_WARNING_PERIOD_KEY: Final = "P"
+WEATHER_WARNING_DESCRIPTION_KEY: Final = "D"
+WEATHER_WARNING_GEOMETRY_PATH_KEY: Final = "U"
 
 # Provider enum values.
 CLOUD_CONDITION_SELECTOR: Final = 0
@@ -165,8 +207,15 @@ LOCATION_DAY_FORECAST_HOUR: Final = 15
 
 # HTTP request settings.
 REQUEST_TIMEOUT: Final = 20
+REQUEST_ATTEMPTS: Final = 3
+RETRY_BASE_DELAY: Final = 0.5
+RETRY_MAX_DELAY: Final = 10.0
+RETRYABLE_HTTP_STATUSES: Final = frozenset({408, 429, 500, 502, 503, 504})
+MAX_CONCURRENT_LOCATION_REQUESTS: Final = 4
 REQUEST_HEADERS: Final = {
     "Accept": "application/json, text/javascript, */*",
     "Referer": f"{BASE_URL}/",
-    "User-Agent": "UkrHMC/0.0.0",
+    "User-Agent": (
+        "UkrHMC Home Assistant integration (+https://github.com/denysdovhan/ha-ukr-hmc)"
+    ),
 }

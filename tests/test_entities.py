@@ -3,29 +3,60 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.components.weather import WeatherEntityFeature
-from homeassistant.const import DEGREE, UnitOfLength, UnitOfPressure, UnitOfTemperature
+from homeassistant.const import (
+    DEGREE,
+    EntityCategory,
+    UnitOfLength,
+    UnitOfPrecipitationDepth,
+    UnitOfPressure,
+    UnitOfTemperature,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.ukr_hmc.binary_sensor import (
+    ALERT_FLAGS,
+    UkrHMCAlertBinarySensor,
+    UkrHMCApiAvailableBinarySensor,
+    UkrHMCDataStaleBinarySensor,
+    UkrHMCRegionalWeatherWarningBinarySensor,
+)
 from custom_components.ukr_hmc.const import (
     CONFIGURATION_URL,
     DOMAIN,
     HYDROLOGY_CONFIGURATION_URL,
     RADIATION_CONFIGURATION_URL,
+    SNOW_CONFIGURATION_URL,
 )
 from custom_components.ukr_hmc.coordinator import UkrHMCCoordinator
 from custom_components.ukr_hmc.sensor import (
     HYDROLOGY_SENSORS,
     LOCATION_SENSORS,
+    LOCATION_SUMMARY_SENSORS,
     RADIATION_SENSORS,
+    SNOW_SENSORS,
     STATION_SENSORS,
+    UkrHMCConsecutiveUpdateFailuresSensor,
+    UkrHMCForecastDetailsSensor,
     UkrHMCHydrologySensor,
+    UkrHMCHydrologyWarningLevelSensor,
+    UkrHMCLastSuccessfulUpdateSensor,
+    UkrHMCLocationSummarySensor,
     UkrHMCRadiationSensor,
+    UkrHMCRegionalHazardLevelSensor,
+    UkrHMCRegionalWeatherWarningLevelSensor,
     UkrHMCSensor,
+    UkrHMCSnowSensor,
+    _daily_temperature,
+    _maximum_gust,
+    _next_precipitation,
+    _precipitation_sum,
+    apparent_temperature,
 )
 from custom_components.ukr_hmc.weather import UkrHMCWeather, _single_wind_speed
 
@@ -37,6 +68,8 @@ from .fixtures import (
     LOCATION_SUBENTRY_DATA,
     RADIATION_STATION,
     RADIATION_SUBENTRY_DATA,
+    SNOW_STATION,
+    SNOW_SUBENTRY_DATA,
     STATION,
     STATION_SUBENTRY_DATA,
 )
@@ -77,6 +110,14 @@ def _hydrology_entry() -> MockConfigEntry:
     )
 
 
+def _snow_entry() -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={},
+        subentries_data=[SNOW_SUBENTRY_DATA],
+    )
+
+
 async def test_station_weather_current_and_native_forecasts(
     hass: HomeAssistant,
 ) -> None:
@@ -99,6 +140,12 @@ async def test_station_weather_current_and_native_forecasts(
         WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_TWICE_DAILY
     )
     assert weather._async_forecast_hourly() is None
+
+    coordinator.last_successful_update = weather.observation.observed_at + timedelta(
+        hours=12, seconds=1
+    )
+    assert not weather.available
+    coordinator.last_successful_update = None
 
     daily = weather._async_forecast_daily()
     assert daily == [
@@ -146,6 +193,11 @@ async def test_location_weather_uses_point_current_and_native_forecasts(
     )
     assert weather.device_info["model"] == "UkrHMC Location Forecast"
     assert weather._async_forecast_twice_daily() is None
+    coordinator.last_successful_update = (
+        weather.current_forecast.forecast_at + timedelta(hours=3, seconds=1)
+    )
+    assert not weather.available
+    coordinator.last_successful_update = None
     assert weather._async_forecast_hourly() == [
         {
             "datetime": "2026-07-30T19:00:00+00:00",
@@ -197,12 +249,31 @@ async def test_station_current_sensors_use_observation_values(
     assert values["condition"] == "partlycloudy"
     assert values["weather"] == "Хмарно з проясненнями"
     assert values["temperature"] == 25.9
+    assert values["apparent_temperature"] == 24.0
     assert values["humidity"] == 38
     assert values["pressure"] == 750
     assert values["wind_speed"] == 3
     assert values["wind_direction"] == 315
     assert values["observation_time"].isoformat() == "2026-07-30T15:00:00+03:00"
+    assert values["sunrise"].isoformat() == "2026-07-30T05:22:00+03:00"
+    assert values["sunset"].isoformat() == "2026-07-30T20:46:00+03:00"
+    assert values["phenomenon_code"] == 6
+    assert values["indicator_code"] == 0
     assert "wind_compass" not in values
+
+    observation_time = UkrHMCSensor(
+        coordinator,
+        subentry,
+        next(item for item in STATION_SENSORS if item.key == "observation_time"),
+    )
+    assert observation_time.entity_category is EntityCategory.DIAGNOSTIC
+    assert observation_time.extra_state_attributes == {
+        "source_type": "weather_station",
+        "station_name": STATION.name,
+        "region": STATION.region_name,
+        "region_id": STATION.region_id,
+        "altitude": STATION.altitude,
+    }
 
     wind_direction = next(
         description
@@ -234,14 +305,23 @@ async def test_location_current_sensors_use_point_forecast_values(
     assert sensors["condition"].native_value == "clear-night"
     assert sensors["weather"].native_value == "Ясно"
     assert sensors["temperature"].native_value == 20
+    assert sensors["apparent_temperature"].native_value == 18.6
     assert sensors["humidity"].native_value == 52
     assert sensors["wind_speed"].native_value == 2
     assert sensors["wind_compass"].native_value == "NW"
     assert sensors["wind_direction"].native_value == 315
+    assert sensors["precipitation"].native_value == 0
+    assert sensors["precipitation"].native_unit_of_measurement == (
+        UnitOfPrecipitationDepth.MILLIMETERS
+    )
     assert (
         sensors["observation_time"].native_value.isoformat()
         == "2026-07-30T22:00:00+03:00"
     )
+    assert sensors["observation_time"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_time"].extra_state_attributes == {
+        "source_type": "weather_location"
+    }
     assert "pressure" not in sensors
 
     wind_compass = next(
@@ -252,6 +332,289 @@ async def test_location_current_sensors_use_point_forecast_values(
     assert wind_compass.device_class is None
     assert wind_compass.native_unit_of_measurement is None
     assert wind_compass.state_class is None
+
+
+def test_apparent_temperature_requires_complete_valid_inputs() -> None:
+    assert apparent_temperature(20, None, 2) is None
+    assert apparent_temperature(20, 52, None) is None
+    assert apparent_temperature(20, 101, 2) is None
+
+
+async def test_station_detailed_forecast_sensor(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    subentry = next(iter(entry.subentries.values()))
+    sensor = UkrHMCForecastDetailsSensor(coordinator, subentry)
+
+    assert sensor.native_value == "2026-07-30"
+    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
+    assert sensor.extra_state_attributes == {
+        "forecasts": [
+            {
+                "date": "2026-07-30",
+                "temperature_night_min": 13,
+                "temperature_night_max": 15,
+                "temperature_day_min": 25,
+                "temperature_day_max": 27,
+                "cloudiness": "невелика хмарність",
+                "precipitation_night": "без опадів",
+                "precipitation_day": "без опадів",
+                "wind_speed_night": "3-8",
+                "wind_speed_day": "5-10",
+                "sunrise": "05:22:00",
+                "sunset": "20:46:00",
+                "provider_code": 16,
+            }
+        ]
+    }
+
+
+async def test_global_attention_binary_sensors(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    sensors = {
+        description.key: UkrHMCAlertBinarySensor(
+            coordinator, entry.entry_id, description
+        )
+        for description in ALERT_FLAGS
+    }
+
+    assert set(sensors) == {
+        "attns_meteo",
+        "attns_hydro",
+        "attns_snigo",
+        "attns_radio",
+        "attns_fire",
+    }
+    assert sensors["attns_meteo"].is_on
+    assert not sensors["attns_hydro"].is_on
+    assert sensors["attns_fire"].is_on
+    assert not sensors["attns_snigo"].is_on
+    assert not sensors["attns_radio"].is_on
+    assert sensors["attns_meteo"].extra_state_attributes == {
+        "scope": "provider_global",
+        "provider_key": "attns_meteo",
+        "has_regional_details": False,
+    }
+    assert sensors["attns_meteo"].device_info["model"] == "UkrHMC Service"
+
+    coordinator._api.source_availability = {"attention_flags": False}
+    assert not sensors["attns_meteo"].available
+
+    coordinator._api.source_availability = {"attention_flags": True}
+    coordinator.async_set_updated_data(replace(DATA, alert_flags={"attns_meteo": True}))
+    assert sensors["attns_meteo"].available
+    assert not sensors["attns_radio"].available
+
+
+async def test_regional_weather_warning_binary_sensor(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    now = datetime.now(UTC)
+    warning = replace(
+        DATA.regional_weather_warnings[1][0],
+        starts_at=now - timedelta(hours=1),
+        ends_at=now + timedelta(hours=1),
+    )
+    coordinator.async_set_updated_data(
+        replace(DATA, regional_weather_warnings={1: (warning,)})
+    )
+    subentry = next(iter(entry.subentries.values()))
+    sensor = UkrHMCRegionalWeatherWarningBinarySensor(coordinator, subentry)
+
+    assert sensor.is_on
+    assert sensor.extra_state_attributes == {
+        "region": "Київська",
+        "region_id": 1,
+        "level": 1,
+        "level_name": "yellow",
+        "active_count": 1,
+        "future_count": 0,
+        "next_start": None,
+        "next_end": warning.ends_at.isoformat(),
+        "updated_at": DATA.weather_warnings_updated_at.isoformat(),
+        "warnings": [
+            {
+                "description": "пориви 15-20 м/с",
+                "phenomenon_code": 8,
+                "level": 1,
+                "level_name": "yellow",
+                "period": "05.09 09:00 — 21:00",
+                "starts_at": warning.starts_at.isoformat(),
+                "ends_at": warning.ends_at.isoformat(),
+                "status": "active",
+            }
+        ],
+    }
+
+    level_sensor = UkrHMCRegionalWeatherWarningLevelSensor(coordinator, subentry)
+    assert level_sensor.native_value == "yellow"
+    assert level_sensor.device_class is SensorDeviceClass.ENUM
+    assert level_sensor.options == ["none", "yellow", "orange", "red"]
+
+    future_warning = replace(
+        warning,
+        danger_level=2,
+        starts_at=now + timedelta(hours=2),
+        ends_at=now + timedelta(hours=3),
+    )
+    coordinator.async_set_updated_data(
+        replace(DATA, regional_weather_warnings={1: (future_warning,)})
+    )
+    assert not sensor.is_on
+    assert sensor.extra_state_attributes["active_count"] == 0
+    assert sensor.extra_state_attributes["future_count"] == 1
+    assert (
+        sensor.extra_state_attributes["next_start"]
+        == future_warning.starts_at.isoformat()
+    )
+    assert (
+        sensor.extra_state_attributes["next_end"] == future_warning.ends_at.isoformat()
+    )
+    assert sensor.extra_state_attributes["warnings"][0]["status"] == "future"
+    assert level_sensor.native_value == "none"
+
+    coordinator.async_set_updated_data(replace(DATA, regional_weather_warnings={}))
+    assert sensor.available
+    assert not sensor.is_on
+    assert sensor.extra_state_attributes["level_name"] == "none"
+    assert level_sensor.native_value == "none"
+
+
+async def test_location_uses_warning_region_resolved_from_coordinates(
+    hass: HomeAssistant,
+) -> None:
+    entry = _location_entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    subentry = next(iter(entry.subentries.values()))
+
+    warning_sensor = UkrHMCRegionalWeatherWarningBinarySensor(coordinator, subentry)
+    level_sensor = UkrHMCRegionalWeatherWarningLevelSensor(coordinator, subentry)
+
+    assert warning_sensor.available
+    assert warning_sensor.is_on
+    assert warning_sensor.extra_state_attributes["region"] == "Київська"
+    assert warning_sensor.extra_state_attributes["region_id"] == 1
+    assert level_sensor.available
+    assert level_sensor.native_value == "yellow"
+
+    coordinator.async_set_updated_data(replace(DATA, regional_weather_warnings={}))
+    assert warning_sensor.available
+    assert not warning_sensor.is_on
+    assert warning_sensor.extra_state_attributes["level_name"] == "none"
+    assert level_sensor.native_value == "none"
+
+
+async def test_regional_fire_and_snow_levels_use_provider_scales(
+    hass: HomeAssistant,
+) -> None:
+    entry = _location_entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    now = datetime.now(UTC)
+    fire_warning = replace(
+        next(iter(DATA.regional_fire_warnings[1])),
+        starts_at=now - timedelta(hours=1),
+        ends_at=now + timedelta(hours=1),
+    )
+    snow_warning = replace(fire_warning, danger_level=4, geometry_path="/snow.json")
+    coordinator.async_set_updated_data(
+        replace(
+            DATA,
+            regional_fire_warnings={1: (fire_warning,)},
+            regional_snow_warnings={7: (snow_warning,)},
+            location_snow_region_ids={"location-subentry": 7},
+        )
+    )
+    subentry = next(iter(entry.subentries.values()))
+    fire = UkrHMCRegionalHazardLevelSensor(coordinator, subentry, hazard="fire")
+    snow = UkrHMCRegionalHazardLevelSensor(coordinator, subentry, hazard="snow")
+
+    assert fire.native_value == "extreme"
+    assert snow.native_value == "high"
+    assert fire.extra_state_attributes["region_id"] == 1
+    assert fire.extra_state_attributes["warnings"][0]["level"] == 3
+
+
+async def test_api_diagnostic_entities(hass: HomeAssistant) -> None:
+    entry = _entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    updated_at = datetime(2026, 9, 4, 8, 30, tzinfo=UTC)
+    coordinator.last_successful_update = updated_at
+
+    availability = UkrHMCApiAvailableBinarySensor(coordinator, entry.entry_id)
+    last_update = UkrHMCLastSuccessfulUpdateSensor(coordinator, entry.entry_id)
+
+    assert availability.available
+    assert availability.is_on
+    assert availability.entity_category is EntityCategory.DIAGNOSTIC
+    assert availability.device_info["model"] == "UkrHMC Service"
+    assert last_update.available
+    assert last_update.native_value == updated_at
+    assert last_update.device_class is SensorDeviceClass.TIMESTAMP
+    assert last_update.entity_category is EntityCategory.DIAGNOSTIC
+
+    failures = UkrHMCConsecutiveUpdateFailuresSensor(coordinator, entry.entry_id)
+    stale = UkrHMCDataStaleBinarySensor(coordinator, entry.entry_id)
+    assert failures.native_value == 0
+    recent_at = datetime.now(UTC)
+    coordinator.last_successful_update = recent_at
+    assert not stale.is_on
+
+    coordinator.last_update_success = False
+    coordinator.consecutive_update_failures = 2
+    assert availability.available
+    assert not availability.is_on
+    assert last_update.available
+    assert last_update.native_value == recent_at
+    assert failures.native_value == 2
+
+    coordinator.last_successful_update = datetime.now(UTC) - timedelta(minutes=46)
+    assert stale.is_on
+
+
+async def test_location_forecast_summary_sensors(hass: HomeAssistant) -> None:
+    entry = _location_entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    anchor = datetime(2026, 7, 30, 18, tzinfo=UTC)
+    original = DATA.location_forecasts["location-subentry"]
+    hourly = tuple(
+        replace(
+            original.hourly_forecasts[0],
+            forecast_at=anchor + timedelta(hours=hour),
+            precipitation=0.5 if hour in (2, 4) else 0,
+            wind_gust=float(hour),
+        )
+        for hour in range(1, 25)
+    )
+    forecast = replace(original, hourly_forecasts=hourly)
+    coordinator.async_set_updated_data(
+        replace(DATA, location_forecasts={"location-subentry": forecast})
+    )
+    coordinator.last_successful_update = anchor
+    subentry = next(iter(entry.subentries.values()))
+
+    assert _precipitation_sum(forecast, anchor, 1) == 0
+    assert _precipitation_sum(forecast, anchor, 3) == 0.5
+    assert _precipitation_sum(forecast, anchor, 24) == 1
+    assert _next_precipitation(forecast, anchor) == anchor + timedelta(hours=2)
+    assert _daily_temperature(forecast, anchor, 0, high=False) == 14
+    assert _daily_temperature(forecast, anchor, 0, high=True) == 26
+    assert _maximum_gust(forecast, anchor) == hourly[-1]
+
+    sensors = {
+        description.key: UkrHMCLocationSummarySensor(coordinator, subentry, description)
+        for description in LOCATION_SUMMARY_SENSORS
+    }
+    assert sensors["precipitation_next_24h"].native_value == 1
+    assert sensors["next_precipitation"].native_value == anchor + timedelta(hours=2)
+    assert sensors["temperature_today_min"].native_value == 14
+    assert sensors["temperature_today_max"].native_value == 26
+    assert sensors["maximum_wind_gust_next_24h"].native_value == 24
+    assert sensors["maximum_wind_gust_time"].native_value == hourly[-1].forecast_at
 
 
 async def test_radiation_sensors_use_direct_provider_values(
@@ -281,6 +644,11 @@ async def test_radiation_sensors_use_direct_provider_values(
     assert sensors["dose_rate"].native_unit_of_measurement == "nSv/h"
     assert sensors["dose_rate"].state_class is SensorStateClass.MEASUREMENT
     assert sensors["observation_time"].device_class is SensorDeviceClass.TIMESTAMP
+    assert sensors["observation_time"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_time"].extra_state_attributes == {
+        "station_name": RADIATION_STATION.name,
+        "altitude": RADIATION_STATION.altitude,
+    }
     assert sensors["observation_time"].device_info["model"] == (
         f"UkrHMC Radiation Station {RADIATION_STATION.station_id}"
     )
@@ -288,6 +656,10 @@ async def test_radiation_sensors_use_direct_provider_values(
         sensors["observation_time"].device_info["configuration_url"]
         == RADIATION_CONFIGURATION_URL
     )
+
+    coordinator.last_successful_update = datetime(2026, 8, 8, tzinfo=UTC)
+    assert not sensors["exposure_dose_rate"].available
+    coordinator.last_successful_update = None
 
     coordinator.async_set_updated_data(replace(DATA, radiation_observations={}))
     assert not sensors["exposure_dose_rate"].available
@@ -336,11 +708,16 @@ async def test_hydrology_sensors_use_direct_provider_values(
         UnitOfLength.CENTIMETERS
     )
     assert sensors["water_level_change"].suggested_display_precision == 0
-    assert sensors["water_level_change"].state_class is None
+    assert sensors["water_level_change"].state_class is SensorStateClass.MEASUREMENT
     assert sensors["water_temperature"].native_unit_of_measurement == (
         UnitOfTemperature.CELSIUS
     )
     assert sensors["hydrological_situation"].device_class is SensorDeviceClass.ENUM
+    assert sensors["observation_time"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_time"].extra_state_attributes == {
+        "post_name": HYDROLOGY_POST.name,
+        "river": HYDROLOGY_POST.river,
+    }
     assert sensors["observation_time"].device_info["model"] == (
         f"UkrHMC Hydrology Post {HYDROLOGY_POST.post_id}"
     )
@@ -348,6 +725,10 @@ async def test_hydrology_sensors_use_direct_provider_values(
         sensors["observation_time"].device_info["configuration_url"]
         == HYDROLOGY_CONFIGURATION_URL
     )
+
+    coordinator.last_successful_update = datetime(2026, 8, 9, tzinfo=UTC)
+    assert not sensors["water_level"].available
+    coordinator.last_successful_update = None
 
     coordinator.async_set_updated_data(replace(DATA, hydrology_observations={}))
     assert not sensors["water_level"].available
@@ -365,3 +746,65 @@ async def test_hydrology_sensors_use_direct_provider_values(
         )
     )
     assert sensors["hydrological_situation"].native_value is None
+
+
+async def test_snow_station_sensors_use_direct_provider_values(
+    hass: HomeAssistant,
+) -> None:
+    entry = _snow_entry()
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(DATA)
+    subentry = next(iter(entry.subentries.values()))
+    sensors = {
+        description.key: UkrHMCSnowSensor(coordinator, subentry, description)
+        for description in SNOW_SENSORS
+    }
+
+    assert sensors["snow_depth"].native_value == 11
+    assert sensors["snow_depth_change"].native_value == -3
+    assert sensors["temperature"].native_value == 4
+    assert sensors["humidity"].native_value == 97
+    assert sensors["wind_speed"].native_value == 4
+    assert sensors["wind_direction"].native_value == 22.5
+    assert sensors["cloudiness"].native_value == "Хмарно"
+    assert sensors["weather_phenomena"].native_value == "Туман"
+    assert sensors["observation_date"].native_value.isoformat() == "2026-04-20"
+    assert sensors["observation_date"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_date"].extra_state_attributes == {
+        "station_name": SNOW_STATION.name
+    }
+    assert sensors["snow_depth"].device_info["model"] == (
+        f"UkrHMC Snow Station {SNOW_STATION.station_id}"
+    )
+    assert (
+        sensors["snow_depth"].device_info["configuration_url"] == SNOW_CONFIGURATION_URL
+    )
+
+    coordinator.last_successful_update = datetime(2026, 4, 23, tzinfo=UTC)
+    assert not sensors["snow_depth"].available
+
+
+async def test_hydrology_warning_sensor_exposes_basin_river_and_period(
+    hass: HomeAssistant,
+) -> None:
+    entry = _hydrology_entry()
+    now = datetime.now(UTC)
+    warning = replace(
+        DATA.regional_hydrology_warnings[61][0],
+        starts_at=now - timedelta(hours=1),
+        ends_at=now + timedelta(hours=1),
+    )
+    coordinator = UkrHMCCoordinator(hass, entry, AsyncMock())
+    coordinator.async_set_updated_data(
+        replace(DATA, regional_hydrology_warnings={61: (warning,)})
+    )
+    sensor = UkrHMCHydrologyWarningLevelSensor(
+        coordinator, next(iter(entry.subentries.values()))
+    )
+
+    assert sensor.native_value == "danger_level_2"
+    assert sensor.extra_state_attributes["river"] == "Дніпро"
+    assert "Середнього Дніпра" in sensor.extra_state_attributes["basin"]
+    assert sensor.extra_state_attributes["warnings"][0]["text"] == (
+        "Очікується підвищення рівнів води."
+    )

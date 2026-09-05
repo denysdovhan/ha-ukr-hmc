@@ -6,15 +6,23 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.loader import async_get_loaded_integration
 
 from .api import UkrHMCClient
+from .const import DOMAIN
 from .coordinator import UkrHMCCoordinator
 from .data import UkrHMCConfigEntry, UkrHMCRuntimeData
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-PLATFORMS = (Platform.SENSOR, Platform.WEATHER)
+PLATFORMS = (
+    Platform.BINARY_SENSOR,
+    Platform.CALENDAR,
+    Platform.EVENT,
+    Platform.SENSOR,
+    Platform.WEATHER,
+)
 
 
 async def async_setup_entry(
@@ -22,7 +30,10 @@ async def async_setup_entry(
     entry: UkrHMCConfigEntry,
 ) -> bool:
     """Set up UkrHMC from a config entry."""
-    api = UkrHMCClient(async_get_clientsession(hass))
+    api = UkrHMCClient(
+        async_get_clientsession(hass),
+        version=async_get_loaded_integration(hass, DOMAIN).version,
+    )
     coordinator = UkrHMCCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
 

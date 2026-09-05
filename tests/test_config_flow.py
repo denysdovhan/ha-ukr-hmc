@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from homeassistant.config_entries import SOURCE_USER
+import voluptuous as vol
+from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER
 from homeassistant.const import CONF_LATITUDE, CONF_LOCATION, CONF_LONGITUDE, CONF_NAME
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -18,10 +19,12 @@ from custom_components.ukr_hmc.api import (
 )
 from custom_components.ukr_hmc.const import (
     CONF_STATION_ID,
+    CONF_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
     NAME,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
+    SUBENTRY_TYPE_SNOW_STATION,
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
     SUBENTRY_TYPES,
@@ -31,12 +34,15 @@ from .fixtures import (
     HYDROLOGY_OBSERVATION,
     HYDROLOGY_POST,
     HYDROLOGY_SUBENTRY_DATA,
+    LOCATION_SUBENTRY_DATA,
     RADIATION_OBSERVATION,
     RADIATION_STATION,
     RADIATION_SUBENTRY_DATA,
     SECOND_HYDROLOGY_POST,
     SECOND_RADIATION_STATION,
     SECOND_STATION,
+    SNOW_OBSERVATION,
+    SNOW_STATION,
     STATION,
 )
 
@@ -44,6 +50,72 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
+
+async def test_options_flow_updates_bounded_polling_interval(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    with pytest.raises(vol.Invalid):
+        result["data_schema"]({CONF_UPDATE_INTERVAL_MINUTES: 31})
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_UPDATE_INTERVAL_MINUTES: 30}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {CONF_UPDATE_INTERVAL_MINUTES: 30}
+
+
+async def test_location_subentry_can_be_reconfigured(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={},
+        subentries_data=[LOCATION_SUBENTRY_DATA],
+    )
+    entry.add_to_hass(hass)
+    subentry = next(iter(entry.subentries.values()))
+
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_validate_location_forecast",
+        new=AsyncMock(),
+    ) as validate:
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_WEATHER_LOCATION),
+            context={
+                "source": SOURCE_RECONFIGURE,
+                "subentry_id": subentry.subentry_id,
+            },
+        )
+        assert result["type"] is FlowResultType.FORM
+
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                CONF_NAME: "Львів",
+                CONF_LOCATION: {CONF_LATITUDE: 49.8397, CONF_LONGITUDE: 24.0297},
+            },
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    updated = entry.subentries[subentry.subentry_id]
+    assert updated.title == "Львів"
+    assert updated.unique_id == "location:49.839700:24.029700"
+    assert updated.data == {
+        CONF_NAME: "Львів",
+        CONF_LATITUDE: 49.8397,
+        CONF_LONGITUDE: 24.0297,
+    }
+    validate.assert_awaited_once_with(
+        UkrHMCLocationForecastRequest(name="Львів", latitude=49.8397, longitude=24.0297)
+    )
 
 
 async def _start_subentry_flow(
@@ -64,7 +136,7 @@ async def _start_subentry_flow(
 
 
 @pytest.mark.parametrize("subentry_type", SUBENTRY_TYPES)
-async def test_config_flow_opens_selected_subentry(
+async def test_config_flow_atomically_creates_entry_with_first_subentry(
     hass: HomeAssistant,
     subentry_type: str,
 ) -> None:
@@ -88,6 +160,38 @@ async def test_config_flow_opens_selected_subentry(
             {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
         )
     )
+    get_snow_data = AsyncMock(
+        return_value=(
+            {SNOW_STATION.station_id: SNOW_STATION},
+            {SNOW_STATION.station_id: SNOW_OBSERVATION},
+        )
+    )
+    validate_location = AsyncMock()
+    user_inputs = {
+        SUBENTRY_TYPE_WEATHER_STATION: {
+            CONF_NAME: "",
+            CONF_STATION_ID: str(STATION.station_id),
+        },
+        SUBENTRY_TYPE_WEATHER_LOCATION: {
+            CONF_NAME: "Home",
+            CONF_LOCATION: {
+                CONF_LATITUDE: 50.4501,
+                CONF_LONGITUDE: 30.5234,
+            },
+        },
+        SUBENTRY_TYPE_RADIATION_STATION: {
+            CONF_NAME: "",
+            CONF_STATION_ID: str(RADIATION_STATION.station_id),
+        },
+        SUBENTRY_TYPE_HYDROLOGY_POST: {
+            CONF_NAME: "",
+            CONF_STATION_ID: str(HYDROLOGY_POST.post_id),
+        },
+        SUBENTRY_TYPE_SNOW_STATION: {
+            CONF_NAME: "",
+            CONF_STATION_ID: str(SNOW_STATION.station_id),
+        },
+    }
     with (
         patch(
             "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_stations",
@@ -101,26 +205,44 @@ async def test_config_flow_opens_selected_subentry(
             "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_hydrology_data",
             new=get_hydrology_data,
         ),
+        patch(
+            "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_snow_data",
+            new=get_snow_data,
+        ),
+        patch(
+            "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_validate_location_forecast",
+            new=validate_location,
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {"next_step_id": subentry_type},
         )
+        assert result["type"] is FlowResultType.FORM
+        assert not hass.config_entries.async_entries(DOMAIN)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_inputs[subentry_type]
+        )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["result"].unique_id is None
     assert result["result"].title == NAME
-    assert result["next_flow"][0].value == "config_subentries_flow"
-    subentry_result = hass.config_entries.subentries.async_get(result["next_flow"][1])
-    assert subentry_result["handler"] == (result["result"].entry_id, subentry_type)
+    subentry = next(iter(result["result"].subentries.values()))
+    assert subentry.subentry_type == subentry_type
     assert get_stations.await_count == (
-        1 if subentry_type == SUBENTRY_TYPE_WEATHER_STATION else 0
+        2 if subentry_type == SUBENTRY_TYPE_WEATHER_STATION else 0
     )
     assert get_radiation_data.await_count == (
-        1 if subentry_type == SUBENTRY_TYPE_RADIATION_STATION else 0
+        2 if subentry_type == SUBENTRY_TYPE_RADIATION_STATION else 0
     )
     assert get_hydrology_data.await_count == (
-        1 if subentry_type == SUBENTRY_TYPE_HYDROLOGY_POST else 0
+        2 if subentry_type == SUBENTRY_TYPE_HYDROLOGY_POST else 0
+    )
+    assert get_snow_data.await_count == (
+        2 if subentry_type == SUBENTRY_TYPE_SNOW_STATION else 0
+    )
+    assert validate_location.await_count == (
+        1 if subentry_type == SUBENTRY_TYPE_WEATHER_LOCATION else 0
     )
 
 
@@ -136,6 +258,27 @@ async def test_config_flow_prevents_second_entry(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "single_instance_allowed"
+
+
+async def test_cancelling_first_resource_does_not_leave_empty_entry(
+    hass: HomeAssistant,
+) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+    )
+    with patch(
+        "custom_components.ukr_hmc.config_flow.UkrHMCClient.async_get_stations",
+        new=AsyncMock(return_value={STATION.station_id: STATION}),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"next_step_id": SUBENTRY_TYPE_WEATHER_STATION},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    hass.config_entries.flow.async_abort(result["flow_id"])
+    assert not hass.config_entries.async_entries(DOMAIN)
 
 
 async def test_explicit_station_subentry(hass: HomeAssistant) -> None:
