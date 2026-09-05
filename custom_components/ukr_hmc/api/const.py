@@ -1,9 +1,11 @@
 """Constants for the UkrHMC API client."""
 
+from datetime import timedelta
 from typing import Final
 
 # API endpoints.
 BASE_URL: Final = "https://www.meteo.gov.ua"
+CATALOG_CACHE_TTL: Final = timedelta(hours=24)
 CITY_API_PATH: Final = "/fmi.json"
 CURRENT_PATH: Final = "/_/m/current.js"
 DAY_NIGHT_PATH: Final = "/_/_e5m.json"
@@ -205,6 +207,11 @@ LOCATION_DAY_FORECAST_HOUR: Final = 15
 
 # HTTP request settings.
 REQUEST_TIMEOUT: Final = 20
+REQUEST_ATTEMPTS: Final = 3
+RETRY_BASE_DELAY: Final = 0.5
+RETRY_MAX_DELAY: Final = 10.0
+RETRYABLE_HTTP_STATUSES: Final = frozenset({408, 429, 500, 502, 503, 504})
+MAX_CONCURRENT_LOCATION_REQUESTS: Final = 4
 REQUEST_HEADERS: Final = {
     "Accept": "application/json, text/javascript, */*",
     "Referer": f"{BASE_URL}/",

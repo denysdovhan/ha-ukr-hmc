@@ -1,16 +1,16 @@
 """Config flow for UkrHMC."""
 
+from __future__ import annotations
+
 from typing import Any, override
 
 import voluptuous as vol
 from homeassistant.config_entries import (
-    SOURCE_USER,
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    ConfigSubentryData,
     ConfigSubentryFlow,
-    FlowType,
-    SubentryFlowContext,
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_LATITUDE, CONF_LOCATION, CONF_LONGITUDE, CONF_NAME
@@ -115,7 +115,6 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
     """Configure the UkrHMC service."""
 
     VERSION = 1
-    _initial_subentry_type: str
 
     @classmethod
     @callback
@@ -134,22 +133,6 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
         }
 
     @override
-    async def async_on_create_entry(
-        self,
-        result: ConfigFlowResult,
-    ) -> ConfigFlowResult:
-        """Open the selected weather flow after creating the service entry."""
-        subentry_result = await self.hass.config_entries.subentries.async_init(
-            (result["result"].entry_id, self._initial_subentry_type),
-            context=SubentryFlowContext(source=SOURCE_USER),
-        )
-        result["next_flow"] = (
-            FlowType.CONFIG_SUBENTRIES_FLOW,
-            subentry_result["flow_id"],
-        )
-        return result
-
-    @override
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
@@ -162,46 +145,93 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_weather_station(
         self,
-        _user_input: dict[str, Any] | None = None,
+        user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Create the provider entry before adding a weather station."""
-        self._initial_subentry_type = SUBENTRY_TYPE_WEATHER_STATION
-        return self.async_create_entry(title=NAME, data={})
+        """Configure the first weather station atomically."""
+        return await self._async_step_initial_subentry(
+            SUBENTRY_TYPE_WEATHER_STATION, WeatherStationFlowHandler, user_input
+        )
 
     async def async_step_weather_location(
         self,
-        _user_input: dict[str, Any] | None = None,
+        user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Create the provider entry before adding a weather location."""
-        self._initial_subentry_type = SUBENTRY_TYPE_WEATHER_LOCATION
-        return self.async_create_entry(title=NAME, data={})
+        """Configure the first weather location atomically."""
+        return await self._async_step_initial_subentry(
+            SUBENTRY_TYPE_WEATHER_LOCATION, WeatherLocationFlowHandler, user_input
+        )
 
     async def async_step_radiation_station(
         self,
-        _user_input: dict[str, Any] | None = None,
+        user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Create the provider entry before adding a radiation station."""
-        self._initial_subentry_type = SUBENTRY_TYPE_RADIATION_STATION
-        return self.async_create_entry(title=NAME, data={})
+        """Configure the first radiation station atomically."""
+        return await self._async_step_initial_subentry(
+            SUBENTRY_TYPE_RADIATION_STATION, RadiationStationFlowHandler, user_input
+        )
 
     async def async_step_hydrology_post(
         self,
-        _user_input: dict[str, Any] | None = None,
+        user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Create the provider entry before adding a hydrology post."""
-        self._initial_subentry_type = SUBENTRY_TYPE_HYDROLOGY_POST
-        return self.async_create_entry(title=NAME, data={})
+        """Configure the first hydrology post atomically."""
+        return await self._async_step_initial_subentry(
+            SUBENTRY_TYPE_HYDROLOGY_POST, HydrologyPostFlowHandler, user_input
+        )
 
     async def async_step_snow_station(
         self,
-        _user_input: dict[str, Any] | None = None,
+        user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Create the provider entry before adding a snow station."""
-        self._initial_subentry_type = SUBENTRY_TYPE_SNOW_STATION
-        return self.async_create_entry(title=NAME, data={})
+        """Configure the first snow station atomically."""
+        return await self._async_step_initial_subentry(
+            SUBENTRY_TYPE_SNOW_STATION, SnowStationFlowHandler, user_input
+        )
+
+    async def _async_step_initial_subentry(
+        self,
+        subentry_type: str,
+        handler_type: type[UkrHMCSubentryFlow],
+        user_input: dict[str, Any] | None,
+    ) -> ConfigFlowResult:
+        """Run a subentry form before atomically creating the service entry."""
+        handler = handler_type()
+        handler.hass = self.hass
+        handler.flow_id = self.flow_id
+        handler.handler = self.handler
+        handler.context = self.context
+        handler.creating_initial_subentry = True
+        result = await handler.async_step_user(user_input)
+        if result["type"].value == "create_entry":
+            return self.async_create_entry(
+                title=NAME,
+                data={},
+                subentries=(
+                    ConfigSubentryData(
+                        data=result["data"],
+                        subentry_type=subentry_type,
+                        title=result["title"],
+                        unique_id=result.get("unique_id"),
+                    ),
+                ),
+            )
+        result["step_id"] = subentry_type
+        return result
 
 
-class WeatherLocationFlowHandler(ConfigSubentryFlow):
+class UkrHMCSubentryFlow(ConfigSubentryFlow):
+    """Base flow shared by initial and additional resources."""
+
+    creating_initial_subentry = False
+
+    def _is_duplicate(self, unique_id: str) -> bool:
+        """Return whether a resource exists outside the initial atomic flow."""
+        return not self.creating_initial_subentry and _is_duplicate(
+            self._get_entry(), unique_id
+        )
+
+
+class WeatherLocationFlowHandler(UkrHMCSubentryFlow):
     """Add weather for a map location."""
 
     @override
@@ -216,7 +246,7 @@ class WeatherLocationFlowHandler(ConfigSubentryFlow):
             longitude = float(user_input[CONF_LOCATION][CONF_LONGITUDE])
             unique_id = f"location:{latitude:.6f}:{longitude:.6f}"
 
-            if _is_duplicate(self._get_entry(), unique_id):
+            if self._is_duplicate(unique_id):
                 return self.async_abort(reason="already_configured")
 
             title = str(user_input[CONF_NAME]).strip()
@@ -272,7 +302,7 @@ class WeatherLocationFlowHandler(ConfigSubentryFlow):
         )
 
 
-class WeatherStationFlowHandler(ConfigSubentryFlow):
+class WeatherStationFlowHandler(UkrHMCSubentryFlow):
     """Add weather from a physical station."""
 
     async def _async_get_stations(self) -> list[UkrHMCStation]:
@@ -298,7 +328,7 @@ class WeatherStationFlowHandler(ConfigSubentryFlow):
         if user_input is not None and not errors:
             station_id = int(user_input[CONF_STATION_ID])
             unique_id = f"station:{station_id}"
-            if _is_duplicate(self._get_entry(), unique_id):
+            if self._is_duplicate(unique_id):
                 return self.async_abort(reason="already_configured")
 
             station = next(
@@ -335,7 +365,7 @@ class WeatherStationFlowHandler(ConfigSubentryFlow):
         )
 
 
-class RadiationStationFlowHandler(ConfigSubentryFlow):
+class RadiationStationFlowHandler(UkrHMCSubentryFlow):
     """Add a physical radiation monitoring station."""
 
     async def _async_get_stations(
@@ -367,7 +397,7 @@ class RadiationStationFlowHandler(ConfigSubentryFlow):
         if user_input is not None and not errors:
             station_id = int(user_input[CONF_STATION_ID])
             unique_id = f"radiation:{station_id}"
-            if _is_duplicate(self._get_entry(), unique_id):
+            if self._is_duplicate(unique_id):
                 return self.async_abort(reason="already_configured")
 
             station = next(
@@ -404,7 +434,7 @@ class RadiationStationFlowHandler(ConfigSubentryFlow):
         )
 
 
-class HydrologyPostFlowHandler(ConfigSubentryFlow):
+class HydrologyPostFlowHandler(UkrHMCSubentryFlow):
     """Add a physical hydrology monitoring post."""
 
     async def _async_get_posts(self) -> list[UkrHMCHydrologyPost]:
@@ -430,7 +460,7 @@ class HydrologyPostFlowHandler(ConfigSubentryFlow):
         if user_input is not None and not errors:
             post_id = int(user_input[CONF_STATION_ID])
             unique_id = f"hydrology:{post_id}"
-            if _is_duplicate(self._get_entry(), unique_id):
+            if self._is_duplicate(unique_id):
                 return self.async_abort(reason="already_configured")
 
             post = next((post for post in posts if post.post_id == post_id), None)
@@ -464,7 +494,7 @@ class HydrologyPostFlowHandler(ConfigSubentryFlow):
         )
 
 
-class SnowStationFlowHandler(ConfigSubentryFlow):
+class SnowStationFlowHandler(UkrHMCSubentryFlow):
     """Add a physical snow and avalanche station."""
 
     async def _async_get_stations(self) -> list[UkrHMCSnowStation]:
@@ -494,7 +524,7 @@ class SnowStationFlowHandler(ConfigSubentryFlow):
         if user_input is not None and not errors:
             station_id = int(user_input[CONF_STATION_ID])
             unique_id = f"snow:{station_id}"
-            if _is_duplicate(self._get_entry(), unique_id):
+            if self._is_duplicate(unique_id):
                 return self.async_abort(reason="already_configured")
             station = next(
                 (station for station in stations if station.station_id == station_id),

@@ -34,3 +34,9 @@ SUBENTRY_TYPES: Final = (
 
 UPDATE_INTERVAL: Final = timedelta(minutes=15)
 STALE_DATA_AFTER: Final = timedelta(minutes=45)
+FUTURE_DATA_TOLERANCE: Final = timedelta(hours=2)
+WEATHER_OBSERVATION_MAX_AGE: Final = timedelta(hours=12)
+LOCATION_FORECAST_MAX_AGE: Final = timedelta(hours=3)
+RADIATION_OBSERVATION_MAX_AGE: Final = timedelta(hours=36)
+HYDROLOGY_OBSERVATION_MAX_AGE: Final = timedelta(hours=48)
+SNOW_OBSERVATION_MAX_AGE: Final = timedelta(hours=48)

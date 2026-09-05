@@ -1,14 +1,20 @@
 """Tests for the isolated UkrHMC API package."""
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime
 from types import MappingProxyType
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from aiohttp import ClientResponseError
 
-from custom_components.ukr_hmc.api import UkrHMCClient, UkrHMCDataError
+from custom_components.ukr_hmc.api import (
+    UkrHMCClient,
+    UkrHMCConnectionError,
+    UkrHMCDataError,
+)
 from custom_components.ukr_hmc.api.const import (
     CITY_API_PATH,
     CITY_LANGUAGE,
@@ -54,6 +60,7 @@ from custom_components.ukr_hmc.api.parsers import (
     parse_station_catalog,
     point_in_region,
 )
+from custom_components.ukr_hmc.api.telemetry import SchemaTelemetry
 
 from .fixtures import (
     DATA,
@@ -171,19 +178,49 @@ REGION_FEATURE_COLLECTION_PAYLOAD = {
         }
     ],
 }
+STATION_SCRIPT = (
+    'const METEO_OBLASTI = {"1": "Київська"}; '
+    'const METEO_STATIONS = {"0": '
+    '{"i": 33345, "o": 1, "h": 167, "t": "Київ", '
+    '"x": "50.391792297363", "y": "30.53563117981"}};'
+)
 
 
 def test_parse_station_catalog() -> None:
-    script = (
-        'const METEO_OBLASTI = {"1": "Київська"}; '
-        'const METEO_STATIONS = {"0": '
-        '{"i": 33345, "o": 1, "h": 167, "t": "Київ", '
-        '"x": "50.391792297363", "y": "30.53563117981"}};'
-    )
-
-    stations = parse_station_catalog(script)
+    stations = parse_station_catalog(STATION_SCRIPT)
 
     assert stations[33345] == STATION
+
+
+async def test_station_catalog_cache_refreshes_after_ttl() -> None:
+    renamed_script = STATION_SCRIPT.replace('"t": "Київ"', '"t": "Київ оновлений"')
+    client = UkrHMCClient(Mock())
+    client._get_text = AsyncMock(side_effect=[STATION_SCRIPT, renamed_script])
+
+    with patch(
+        "custom_components.ukr_hmc.api.client.monotonic",
+        side_effect=[0, 23 * 3600, 25 * 3600, 25 * 3600],
+    ):
+        initial = await client.async_get_stations()
+        cached = await client.async_get_stations()
+        refreshed = await client.async_get_stations()
+
+    assert initial[33345].name == "Київ"
+    assert cached is initial
+    assert refreshed[33345].name == "Київ оновлений"
+    assert client._get_text.await_count == 2
+
+
+async def test_expired_station_catalog_falls_back_to_last_good_cache() -> None:
+    client = UkrHMCClient(Mock())
+    client._stations = {STATION.station_id: STATION}
+    client._cache_updated_at["stations"] = 0
+    client._get_text = AsyncMock(side_effect=UkrHMCConnectionError("offline"))
+
+    with patch("custom_components.ukr_hmc.api.client.monotonic", return_value=90000):
+        stations = await client.async_get_stations()
+
+    assert stations == {STATION.station_id: STATION}
 
 
 def test_parse_radiation_catalog_and_observations() -> None:
@@ -201,6 +238,12 @@ def test_parse_radiation_catalog_and_observations() -> None:
     )
 
     assert stations == {RADIATION_STATION.station_id: RADIATION_STATION}
+    assert observations == {RADIATION_STATION.station_id: RADIATION_OBSERVATION}
+
+
+def test_radiation_observations_skip_one_invalid_record() -> None:
+    observations = parse_radiation_observations({**RADIATION_PAYLOAD, "broken": {}})
+
     assert observations == {RADIATION_STATION.station_id: RADIATION_OBSERVATION}
 
 
@@ -249,6 +292,12 @@ def test_parse_hydrology_catalog_and_observations() -> None:
         }
     )
     assert zero_temperature[79043].water_temperature == 0
+
+
+def test_hydrology_observations_skip_one_invalid_record() -> None:
+    observations = parse_hydrology_observations({**HYDROLOGY_PAYLOAD, "broken": {}})
+
+    assert observations == {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION}
 
 
 async def test_client_gets_hydrology_catalog_and_observations() -> None:
@@ -511,6 +560,117 @@ async def test_location_forecast_uses_city_label_and_point() -> None:
     )
 
 
+async def test_json_request_retries_temporary_http_error() -> None:
+    response = AsyncMock()
+    response.raise_for_status = Mock(
+        side_effect=[
+            ClientResponseError(Mock(), (), status=503, headers={"Retry-After": "0"}),
+            None,
+        ]
+    )
+    response.json.return_value = {"ok": True}
+    session = Mock()
+    session.get = AsyncMock(return_value=response)
+    client = UkrHMCClient(session)
+
+    with patch(
+        "custom_components.ukr_hmc.api.client.asyncio.sleep", new=AsyncMock()
+    ) as sleep:
+        payload = await client._get_json("/temporary.json")
+
+    assert payload == {"ok": True}
+    assert session.get.await_count == 2
+    sleep.assert_awaited_once_with(0)
+    assert client.endpoint_availability["/temporary.json"]
+    assert client.endpoint_telemetry["/temporary.json"]["attempts"] == 2
+    assert client.endpoint_telemetry["/temporary.json"]["available"]
+    assert client.endpoint_telemetry["/temporary.json"]["error_category"] is None
+
+
+async def test_json_request_does_not_retry_permanent_http_error() -> None:
+    response = AsyncMock()
+    response.raise_for_status = Mock(
+        side_effect=ClientResponseError(Mock(), (), status=404)
+    )
+    session = Mock()
+    session.get = AsyncMock(return_value=response)
+    client = UkrHMCClient(session)
+
+    with (
+        patch(
+            "custom_components.ukr_hmc.api.client.asyncio.sleep", new=AsyncMock()
+        ) as sleep,
+        pytest.raises(UkrHMCConnectionError),
+    ):
+        await client._get_json("/missing.json")
+
+    session.get.assert_awaited_once()
+    sleep.assert_not_awaited()
+    assert not client.endpoint_availability["/missing.json"]
+    assert client.endpoint_telemetry["/missing.json"] == {
+        "available": False,
+        "duration_ms": client.endpoint_telemetry["/missing.json"]["duration_ms"],
+        "attempts": 1,
+        "status": 404,
+        "status_category": "4xx",
+        "error_category": "http",
+    }
+
+
+def test_schema_telemetry_sanitizes_missing_null_and_nan_records() -> None:
+    telemetry = SchemaTelemetry()
+    valid_record = RADIATION_PAYLOAD["33345"]
+    payload = {
+        **RADIATION_PAYLOAD,
+        "missing": {key: value for key, value in valid_record.items() if key != "VZ"},
+        "null": {**valid_record, "VR": None},
+        "nan": {**valid_record, "VR": float("nan")},
+    }
+
+    observations = parse_radiation_observations(payload, telemetry)
+
+    assert observations.keys() == {33345}
+    assert telemetry.snapshot()["radiation_observations"] == {
+        "accepted": 1,
+        "rejected": 3,
+        "reason_counts": {
+            "invalid_type": 1,
+            "invalid_value": 1,
+            "missing_field": 1,
+        },
+        "affected_keys": {"VZ": 1},
+    }
+
+
+async def test_location_forecast_requests_have_bounded_concurrency() -> None:
+    client = UkrHMCClient(Mock())
+    active = 0
+    maximum_active = 0
+    forecast = DATA.location_forecasts["location-subentry"]
+
+    async def get_forecast(_request):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0)
+        active -= 1
+        return forecast
+
+    client._async_get_location_forecast = AsyncMock(side_effect=get_forecast)
+    requests = {
+        f"location-{index}": replace(
+            LOCATION_FORECAST_REQUEST,
+            name=f"Location {index}",
+        )
+        for index in range(10)
+    }
+
+    results = await client._async_get_location_forecasts(requests)
+
+    assert results.keys() == requests.keys()
+    assert maximum_active == 4
+
+
 async def test_location_forecast_requires_non_empty_city_label() -> None:
     client = UkrHMCClient(Mock())
 
@@ -688,6 +848,167 @@ async def test_data_snapshot_can_include_only_hydrology_data() -> None:
     )
     client._get_json.assert_any_await(HYDROLOGY_WARNINGS_PATH)
     client._get_text.assert_awaited_once_with(HYDROLOGY_WARNING_LOOKUP_PATH)
+
+
+async def test_hydrology_warning_failure_preserves_observations() -> None:
+    client = UkrHMCClient(Mock())
+
+    async def get_json(path, _params=None):
+        if path == DAY_NIGHT_PATH:
+            return ALERT_PAYLOAD
+        if path == HYDROLOGY_WARNINGS_PATH:
+            msg = "warning feed offline"
+            raise UkrHMCConnectionError(msg)
+        raise AssertionError(path)
+
+    client._get_json = AsyncMock(side_effect=get_json)
+    client._get_text = AsyncMock(
+        return_value='const ATTNS_REGIONS = {"61": "Середній Дніпро"};'
+    )
+    client.async_get_hydrology_data = AsyncMock(
+        return_value=(
+            {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
+            {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+        )
+    )
+
+    snapshot = await client.async_get_data(
+        include_station_data=False,
+        include_hydrology_data=True,
+    )
+
+    assert snapshot.hydrology_observations[HYDROLOGY_POST.post_id] == (
+        HYDROLOGY_OBSERVATION
+    )
+    assert snapshot.regional_hydrology_warnings == {}
+    assert not client.endpoint_availability[HYDROLOGY_WARNINGS_PATH]
+
+
+async def test_core_source_failure_does_not_drop_other_product() -> None:
+    client = UkrHMCClient(Mock())
+    client._get_json = AsyncMock(
+        side_effect=lambda path, _params=None: (
+            ALERT_PAYLOAD
+            if path == DAY_NIGHT_PATH
+            else {"UPD": "04.09.2026, 12:00", "OBJ": []}
+        )
+    )
+    client._get_text = AsyncMock(
+        return_value='const ATTNS_REGIONS = {"61": "Середній Дніпро"};'
+    )
+    client.async_get_radiation_data = AsyncMock(
+        side_effect=UkrHMCConnectionError("radiation offline")
+    )
+    client.async_get_hydrology_data = AsyncMock(
+        return_value=(
+            {HYDROLOGY_POST.post_id: HYDROLOGY_POST},
+            {HYDROLOGY_POST.post_id: HYDROLOGY_OBSERVATION},
+        )
+    )
+
+    snapshot = await client.async_get_data(
+        include_station_data=False,
+        include_radiation_data=True,
+        include_hydrology_data=True,
+    )
+
+    assert snapshot.radiation_observations == {}
+    assert snapshot.hydrology_observations[HYDROLOGY_POST.post_id]
+    assert not client.source_availability["radiation"]
+    assert client.source_availability["hydrology"]
+
+
+async def test_core_product_requests_start_in_parallel() -> None:
+    client = UkrHMCClient(Mock())
+    release = asyncio.Event()
+    started = set()
+
+    async def radiation_data():
+        started.add("radiation")
+        await release.wait()
+        return {}, {}
+
+    async def hydrology_data():
+        started.add("hydrology")
+        await release.wait()
+        return {}, {}
+
+    client.async_get_radiation_data = AsyncMock(side_effect=radiation_data)
+    client.async_get_hydrology_data = AsyncMock(side_effect=hydrology_data)
+    client._get_json = AsyncMock(return_value=ALERT_PAYLOAD)
+    update = asyncio.create_task(
+        client.async_get_data(
+            include_station_data=False,
+            include_radiation_data=True,
+            include_hydrology_data=True,
+        )
+    )
+
+    try:
+        for _ in range(5):
+            await asyncio.sleep(0)
+            if len(started) == 2:
+                break
+        assert started == {"radiation", "hydrology"}
+    finally:
+        release.set()
+        await update
+
+
+async def test_one_location_failure_preserves_other_locations() -> None:
+    client = UkrHMCClient(Mock())
+    forecast = DATA.location_forecasts["location-subentry"]
+
+    async def get_forecast(request):
+        if request.name == "Broken":
+            msg = "location offline"
+            raise UkrHMCConnectionError(msg)
+        return forecast
+
+    client._async_get_location_forecast = AsyncMock(side_effect=get_forecast)
+    requests = {
+        "working": LOCATION_FORECAST_REQUEST,
+        "broken": replace(LOCATION_FORECAST_REQUEST, name="Broken"),
+    }
+
+    results = await client._async_get_location_forecasts(requests)
+
+    assert results == {"working": forecast}
+
+
+async def test_one_regional_warning_failure_preserves_location_forecast() -> None:
+    client = UkrHMCClient(Mock())
+    client.async_get_stations = AsyncMock(return_value={})
+
+    async def get_json(path, params=None):
+        if path == DAY_NIGHT_PATH:
+            return ALERT_PAYLOAD
+        if path == REGIONAL_FIRE_WARNINGS_PATH:
+            msg = "fire warning feed offline"
+            raise UkrHMCConnectionError(msg)
+        if path in (
+            REGIONAL_WEATHER_WARNINGS_PATH,
+            REGIONAL_SNOW_WARNINGS_PATH,
+        ):
+            return WEATHER_WARNING_PAYLOAD
+        if path == "/_/geo/ua/1.json":
+            return REGION_GEOMETRY_PAYLOAD
+        if path == CITY_API_PATH:
+            assert params is not None
+            return _hourly_payload()
+        raise AssertionError(path)
+
+    client._get_json = AsyncMock(side_effect=get_json)
+
+    snapshot = await client.async_get_data(
+        {"location-subentry": LOCATION_FORECAST_REQUEST},
+        include_station_data=False,
+    )
+
+    assert "location-subentry" in snapshot.location_forecasts
+    assert snapshot.regional_fire_warnings == {}
+    assert snapshot.regional_weather_warnings
+    assert not client.endpoint_availability[REGIONAL_FIRE_WARNINGS_PATH]
 
 
 def test_parse_hourly_forecasts_preserves_provider_values() -> None:

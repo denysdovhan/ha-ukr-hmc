@@ -255,6 +255,11 @@ class UkrHMCApiAvailableBinarySensor(
         return self.coordinator.last_update_success
 
     @property
+    def extra_state_attributes(self) -> dict[str, bool]:
+        """Expose product-level availability without endpoint implementation details."""
+        return dict(sorted(self.coordinator.source_availability.items()))
+
+    @property
     @override
     def device_info(self) -> DeviceInfo:
         """Return the shared UkrHMC service device."""

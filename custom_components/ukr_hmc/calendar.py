@@ -49,6 +49,12 @@ class UkrHMCWarningCalendar(UkrHMCEntity, CalendarEntity):
         super().__init__(coordinator, subentry)
         self._attr_unique_id = f"{subentry.subentry_id}-warning_calendar"
 
+    @property
+    @override
+    def available(self) -> bool:
+        """Keep warnings independent from current observation freshness."""
+        return self.coordinator.last_update_success
+
     def _region_ids(self) -> tuple[int | None, int | None, int | None]:
         """Return meteorological, fire, and avalanche regions for this source."""
         station = self.coordinator.data.stations.get(self._station_id)

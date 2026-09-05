@@ -12,10 +12,13 @@ from .const import (
     CONF_STATION_ID,
     CONFIGURATION_URL,
     DOMAIN,
+    LOCATION_FORECAST_MAX_AGE,
     MANUFACTURER,
     SUBENTRY_TYPE_WEATHER_STATION,
+    WEATHER_OBSERVATION_MAX_AGE,
 )
 from .coordinator import UkrHMCCoordinator
+from .freshness import is_fresh
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
@@ -62,7 +65,20 @@ class UkrHMCWeatherEntityMixin:
         current_data = (
             self.observation if self._station_id is not None else self.current_forecast
         )
-        return self.coordinator.last_update_success and current_data is not None
+        if not self.coordinator.last_update_success or current_data is None:
+            return False
+        maximum_age = (
+            WEATHER_OBSERVATION_MAX_AGE
+            if self._station_id is not None
+            else LOCATION_FORECAST_MAX_AGE
+        )
+        observed_at = (
+            current_data.observed_at
+            if self._station_id is not None
+            else current_data.forecast_at
+        )
+        checked_at = self.coordinator.last_successful_update
+        return checked_at is None or is_fresh(observed_at, maximum_age, checked_at)
 
     @property
     def device_info(self) -> DeviceInfo:

@@ -1,11 +1,15 @@
 """Parsers for UkrHMC JSON and JavaScript data payloads."""
 
+from __future__ import annotations
+
 import json
+import logging
+import math
 import re
 from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta
 from html import unescape
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from .const import (
@@ -146,6 +150,11 @@ from .models import (
     UkrHMCWind,
 )
 
+if TYPE_CHECKING:
+    from .telemetry import SchemaTelemetry
+
+LOGGER = logging.getLogger(__name__)
+
 UKRAINE_TIME_ZONE = ZoneInfo("Europe/Kyiv")
 STATION_CATALOG_PATTERN = re.compile(
     rf"const {REGIONS_VARIABLE}\s*=\s*(\{{.*?\}});\s*"
@@ -185,6 +194,15 @@ def _require_mapping(value: object) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError
     return value
+
+
+def _finite_float(value: object) -> float:
+    """Return a finite provider number."""
+    result = float(value)
+    if not math.isfinite(result):
+        msg = "non-finite number"
+        raise ValueError(msg)
+    return result
 
 
 def _geometry_polygon_values(geometry: Mapping[str, Any]) -> list[Any]:
@@ -570,15 +588,17 @@ def parse_radiation_station_catalog(
 
 def parse_radiation_observations(
     payload: Mapping[str, Any],
+    telemetry: SchemaTelemetry | None = None,
 ) -> dict[int, UkrHMCRadiationObservation]:
     """Parse current radiation observations."""
     observations: dict[int, UkrHMCRadiationObservation] = {}
-    try:
-        for station_id, record in payload.items():
-            if station_id == "0" or not isinstance(record, Mapping):
-                continue
-            exposure_dose_rate = float(record[RADIATION_EXPOSURE_DOSE_RATE_KEY])
-            dose_rate = float(record[RADIATION_DOSE_RATE_KEY])
+    rejected = 0
+    for station_id, record in payload.items():
+        if station_id == "0" or not isinstance(record, Mapping):
+            continue
+        try:
+            exposure_dose_rate = _finite_float(record[RADIATION_EXPOSURE_DOSE_RATE_KEY])
+            dose_rate = _finite_float(record[RADIATION_DOSE_RATE_KEY])
             if exposure_dose_rate < 0 or dose_rate < 0:
                 continue
             observations[int(station_id)] = UkrHMCRadiationObservation(
@@ -589,9 +609,16 @@ def parse_radiation_observations(
                 exposure_dose_rate=exposure_dose_rate,
                 dose_rate=dose_rate,
             )
-    except (KeyError, TypeError, ValueError) as exc:
+            if telemetry:
+                telemetry.accepted("radiation_observations")
+        except (KeyError, TypeError, ValueError) as exc:
+            rejected += 1
+            if telemetry:
+                telemetry.rejected("radiation_observations", exc)
+            LOGGER.warning("Skipping invalid radiation observation %s", station_id)
+    if rejected and not observations:
         msg = "Invalid radiation observation data"
-        raise UkrHMCDataError(msg) from exc
+        raise UkrHMCDataError(msg)
     return observations
 
 
@@ -621,14 +648,18 @@ def parse_hydrology_post_catalog(script: str) -> dict[int, UkrHMCHydrologyPost]:
 
 def parse_hydrology_observations(
     payload: Mapping[str, Any],
+    telemetry: SchemaTelemetry | None = None,
 ) -> dict[int, UkrHMCHydrologyObservation]:
     """Parse current daily hydrology observations."""
     observations: dict[int, UkrHMCHydrologyObservation] = {}
-    try:
-        for post_id, record in payload.items():
-            if post_id == "0" or not isinstance(record, Mapping):
-                continue
-            water_level_altitude = float(record[HYDROLOGY_WATER_LEVEL_ALTITUDE_KEY])
+    rejected = 0
+    for post_id, record in payload.items():
+        if post_id == "0" or not isinstance(record, Mapping):
+            continue
+        try:
+            water_level_altitude = _finite_float(
+                record[HYDROLOGY_WATER_LEVEL_ALTITUDE_KEY]
+            )
             if water_level_altitude == 0:
                 continue
             observations[int(post_id)] = UkrHMCHydrologyObservation(
@@ -639,15 +670,26 @@ def parse_hydrology_observations(
                     hour=HYDROLOGY_OBSERVATION_HOUR,
                     tzinfo=UKRAINE_TIME_ZONE,
                 ),
-                water_level=float(record[HYDROLOGY_WATER_LEVEL_KEY]),
+                water_level=_finite_float(record[HYDROLOGY_WATER_LEVEL_KEY]),
                 water_level_altitude=water_level_altitude,
-                water_level_change=float(record[HYDROLOGY_WATER_LEVEL_CHANGE_KEY]),
-                water_temperature=float(record[HYDROLOGY_WATER_TEMPERATURE_KEY]),
+                water_level_change=_finite_float(
+                    record[HYDROLOGY_WATER_LEVEL_CHANGE_KEY]
+                ),
+                water_temperature=_finite_float(
+                    record[HYDROLOGY_WATER_TEMPERATURE_KEY]
+                ),
                 level_class=int(record[HYDROLOGY_LEVEL_CLASS_KEY]),
             )
-    except (KeyError, TypeError, ValueError) as exc:
+            if telemetry:
+                telemetry.accepted("hydrology_observations")
+        except (KeyError, TypeError, ValueError) as exc:
+            rejected += 1
+            if telemetry:
+                telemetry.rejected("hydrology_observations", exc)
+            LOGGER.warning("Skipping invalid hydrology observation %s", post_id)
+    if rejected and not observations:
         msg = "Invalid hydrology observation data"
-        raise UkrHMCDataError(msg) from exc
+        raise UkrHMCDataError(msg)
     return observations
 
 
@@ -674,7 +716,8 @@ def parse_snow_station_catalog(script: str) -> dict[int, UkrHMCSnowStation]:
 
 
 def parse_snow_observations(
-    payload: Mapping[str, Any], lookups: UkrHMCLookups
+    payload: Mapping[str, Any],
+    lookups: UkrHMCLookups,
 ) -> dict[int, UkrHMCSnowObservation]:
     """Parse the latest snow and mountain-weather observations."""
     try:
@@ -738,23 +781,25 @@ def parse_lookups(icon_script: str, wind_script: str) -> UkrHMCLookups:
 def parse_observations(
     payload: Mapping[str, Any],
     lookups: UkrHMCLookups,
+    telemetry: SchemaTelemetry | None = None,
 ) -> dict[int, UkrHMCObservation]:
     """Parse latest observations for all stations."""
     observations: dict[int, UkrHMCObservation] = {}
-    try:
-        for station_id, value in payload.items():
-            if not isinstance(value, Mapping):
-                continue
+    rejected = 0
+    for station_id, value in payload.items():
+        if not isinstance(value, Mapping):
+            continue
+        try:
             observed_at = datetime.strptime(
                 f"{value[OBSERVATION_DATE_KEY]} {int(value[OBSERVATION_HOUR_KEY]):02d}",
                 "%Y-%m-%d %H",
             ).replace(tzinfo=UKRAINE_TIME_ZONE)
             observations[int(station_id)] = UkrHMCObservation(
                 observed_at=observed_at,
-                temperature=float(value[OBSERVATION_TEMPERATURE_KEY]),
-                humidity=float(value[OBSERVATION_HUMIDITY_KEY]),
-                pressure=float(value[OBSERVATION_PRESSURE_KEY]),
-                wind_speed=float(value[OBSERVATION_WIND_SPEED_KEY]),
+                temperature=_finite_float(value[OBSERVATION_TEMPERATURE_KEY]),
+                humidity=_finite_float(value[OBSERVATION_HUMIDITY_KEY]),
+                pressure=_finite_float(value[OBSERVATION_PRESSURE_KEY]),
+                wind_speed=_finite_float(value[OBSERVATION_WIND_SPEED_KEY]),
                 wind=_wind(lookups, value[OBSERVATION_WIND_DIRECTION_KEY]),
                 condition=_condition_title(
                     lookups,
@@ -768,9 +813,16 @@ def parse_observations(
                 sunrise=_parse_time(value.get(SUNRISE_KEY)),
                 sunset=_parse_time(value.get(SUNSET_KEY)),
             )
-    except (KeyError, TypeError, ValueError) as exc:
+            if telemetry:
+                telemetry.accepted("weather_observations")
+        except (KeyError, TypeError, ValueError, UkrHMCDataError) as exc:
+            rejected += 1
+            if telemetry:
+                telemetry.rejected("weather_observations", exc)
+            LOGGER.warning("Skipping invalid weather observation %s", station_id)
+    if rejected and not observations:
         msg = "Invalid current observation data"
-        raise UkrHMCDataError(msg) from exc
+        raise UkrHMCDataError(msg)
     return observations
 
 

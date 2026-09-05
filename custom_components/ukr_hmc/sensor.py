@@ -34,10 +34,13 @@ from .const import (
     CONFIGURATION_URL,
     DOMAIN,
     HYDROLOGY_CONFIGURATION_URL,
+    HYDROLOGY_OBSERVATION_MAX_AGE,
     MANUFACTURER,
     NAME,
     RADIATION_CONFIGURATION_URL,
+    RADIATION_OBSERVATION_MAX_AGE,
     SNOW_CONFIGURATION_URL,
+    SNOW_OBSERVATION_MAX_AGE,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
     SUBENTRY_TYPE_SNOW_STATION,
@@ -46,6 +49,7 @@ from .const import (
 )
 from .coordinator import UkrHMCCoordinator
 from .entity import UkrHMCEntity
+from .freshness import is_fresh
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1048,6 +1052,14 @@ class UkrHMCRadiationSensor(UkrHMCEntity, SensorEntity):
         return (
             self.coordinator.last_update_success
             and self.radiation_observation is not None
+            and (
+                self.coordinator.last_successful_update is None
+                or is_fresh(
+                    self.radiation_observation.observed_at,
+                    RADIATION_OBSERVATION_MAX_AGE,
+                    self.coordinator.last_successful_update,
+                )
+            )
         )
 
     @property
@@ -1101,6 +1113,14 @@ class UkrHMCHydrologySensor(UkrHMCEntity, SensorEntity):
         return (
             self.coordinator.last_update_success
             and self.hydrology_observation is not None
+            and (
+                self.coordinator.last_successful_update is None
+                or is_fresh(
+                    self.hydrology_observation.observed_at,
+                    HYDROLOGY_OBSERVATION_MAX_AGE,
+                    self.coordinator.last_successful_update,
+                )
+            )
         )
 
     @property
@@ -1152,7 +1172,16 @@ class UkrHMCSnowSensor(UkrHMCEntity, SensorEntity):
     def available(self) -> bool:
         """Return whether the station has a current provider record."""
         return (
-            self.coordinator.last_update_success and self.snow_observation is not None
+            self.coordinator.last_update_success
+            and self.snow_observation is not None
+            and (
+                self.coordinator.last_successful_update is None
+                or is_fresh(
+                    self.snow_observation.observed_on,
+                    SNOW_OBSERVATION_MAX_AGE,
+                    self.coordinator.last_successful_update,
+                )
+            )
         )
 
     @property

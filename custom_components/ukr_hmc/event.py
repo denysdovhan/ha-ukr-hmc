@@ -91,6 +91,12 @@ class UkrHMCWarningEvent(UkrHMCEntity, EventEntity):
             self._previous_warning.danger_level if self._previous_warning else 0
         )
 
+    @property
+    @override
+    def available(self) -> bool:
+        """Keep warning transitions independent from observation freshness."""
+        return self.coordinator.last_update_success
+
     def _region_id(self) -> int | None:
         """Return the warning region matched to this weather source."""
         station = self.coordinator.data.stations.get(self._station_id)

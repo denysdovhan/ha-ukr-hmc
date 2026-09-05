@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -41,6 +43,31 @@ def _entity_id(
 async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
     hass: HomeAssistant,
 ) -> None:
+    now = datetime.now(UTC)
+    fresh_data = replace(
+        DATA,
+        observations={
+            key: replace(value, observed_at=now)
+            for key, value in DATA.observations.items()
+        },
+        location_forecasts={
+            key: replace(
+                value,
+                current=replace(value.current, forecast_at=now)
+                if value.current
+                else None,
+            )
+            for key, value in DATA.location_forecasts.items()
+        },
+        radiation_observations={
+            key: replace(value, observed_at=now)
+            for key, value in DATA.radiation_observations.items()
+        },
+        hydrology_observations={
+            key: replace(value, observed_at=now)
+            for key, value in DATA.hydrology_observations.items()
+        },
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         title=NAME,
@@ -57,7 +84,7 @@ async def test_setup_creates_weather_and_current_sensors(  # noqa: PLR0915
 
     with patch(
         "custom_components.ukr_hmc.api.UkrHMCClient.async_get_data",
-        new=AsyncMock(return_value=DATA),
+        new=AsyncMock(return_value=fresh_data),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()

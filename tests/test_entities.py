@@ -141,6 +141,12 @@ async def test_station_weather_current_and_native_forecasts(
     )
     assert weather._async_forecast_hourly() is None
 
+    coordinator.last_successful_update = weather.observation.observed_at + timedelta(
+        hours=12, seconds=1
+    )
+    assert not weather.available
+    coordinator.last_successful_update = None
+
     daily = weather._async_forecast_daily()
     assert daily == [
         {
@@ -187,6 +193,11 @@ async def test_location_weather_uses_point_current_and_native_forecasts(
     )
     assert weather.device_info["model"] == "UkrHMC Location Forecast"
     assert weather._async_forecast_twice_daily() is None
+    coordinator.last_successful_update = (
+        weather.current_forecast.forecast_at + timedelta(hours=3, seconds=1)
+    )
+    assert not weather.available
+    coordinator.last_successful_update = None
     assert weather._async_forecast_hourly() == [
         {
             "datetime": "2026-07-30T19:00:00+00:00",
@@ -602,6 +613,10 @@ async def test_radiation_sensors_use_direct_provider_values(
         == RADIATION_CONFIGURATION_URL
     )
 
+    coordinator.last_successful_update = datetime(2026, 8, 8, tzinfo=UTC)
+    assert not sensors["exposure_dose_rate"].available
+    coordinator.last_successful_update = None
+
     coordinator.async_set_updated_data(replace(DATA, radiation_observations={}))
     assert not sensors["exposure_dose_rate"].available
     assert sensors["exposure_dose_rate"].native_value is None
@@ -662,6 +677,10 @@ async def test_hydrology_sensors_use_direct_provider_values(
         == HYDROLOGY_CONFIGURATION_URL
     )
 
+    coordinator.last_successful_update = datetime(2026, 8, 9, tzinfo=UTC)
+    assert not sensors["water_level"].available
+    coordinator.last_successful_update = None
+
     coordinator.async_set_updated_data(replace(DATA, hydrology_observations={}))
     assert not sensors["water_level"].available
     assert sensors["water_level"].native_value is None
@@ -707,6 +726,9 @@ async def test_snow_station_sensors_use_direct_provider_values(
     assert (
         sensors["snow_depth"].device_info["configuration_url"] == SNOW_CONFIGURATION_URL
     )
+
+    coordinator.last_successful_update = datetime(2026, 4, 23, tzinfo=UTC)
+    assert not sensors["snow_depth"].available
 
 
 async def test_hydrology_warning_sensor_exposes_basin_river_and_period(

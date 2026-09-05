@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, override
 
@@ -55,6 +56,12 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
         self._api = api
         self.last_successful_update: datetime | None = None
         self.consecutive_update_failures = 0
+
+    @property
+    def source_availability(self) -> Mapping[str, bool]:
+        """Return product-level availability from the latest refresh."""
+        availability = getattr(self._api, "source_availability", {})
+        return availability if isinstance(availability, Mapping) else {}
 
     @override
     async def _async_update_data(self) -> UkrHMCData:
