@@ -1,18 +1,18 @@
 | Date       | Name                                                                                            | Status |
 | ---------- | ----------------------------------------------------------------------------------------------- | ------ |
-| 2026-09-05 | [Schema drift diagnostics](2026-09-05-schema-drift-diagnostics.md)                             | done   |
-| 2026-09-05 | [Partial-error telemetry](2026-09-05-partial-error-telemetry.md)                               | done   |
-| 2026-09-05 | [Atomic initial config flow](2026-09-05-atomic-initial-config-flow.md)                           | done   |
-| 2026-09-05 | [Catalog cache TTL](2026-09-05-catalog-cache-ttl.md)                                           | done   |
+| 2026-09-05 | [Schema drift diagnostics](2026-09-05-schema-drift-diagnostics.md)                              | done   |
+| 2026-09-05 | [Partial-error telemetry](2026-09-05-partial-error-telemetry.md)                                | done   |
+| 2026-09-05 | [Atomic initial config flow](2026-09-05-atomic-initial-config-flow.md)                          | done   |
+| 2026-09-05 | [Catalog cache TTL](2026-09-05-catalog-cache-ttl.md)                                            | done   |
 | 2026-09-05 | [Core source isolation and parallel loading](2026-09-05-core-source-isolation.md)               | done   |
 | 2026-09-05 | [HTTP retries and location concurrency](2026-09-05-http-retries-and-location-concurrency.md)    | done   |
 | 2026-09-04 | [Product data freshness](2026-09-04-product-data-freshness.md)                                  | done   |
 | 2026-09-04 | [Partial feed resilience](2026-09-04-partial-feed-resilience.md)                                | done   |
 | 2026-09-04 | [Hydrology warning geometry compatibility](2026-09-04-hydrology-geometry-fix.md)                | done   |
-| 2026-09-04 | [Warning event entities](2026-09-04-warning-events.md)                                         | wip    |
+| 2026-09-04 | [Warning event entities](2026-09-04-warning-events.md)                                          | wip    |
 | 2026-09-04 | [Radiological warning feed research](2026-09-04-radiological-warning-feed.md)                   | done   |
-| 2026-09-04 | [Diagnostics download](2026-09-04-diagnostics-download.md)                                     | wip    |
-| 2026-09-04 | [Snow and avalanche stations](2026-09-04-snow-avalanche-stations.md)                           | wip    |
+| 2026-09-04 | [Diagnostics download](2026-09-04-diagnostics-download.md)                                      | wip    |
+| 2026-09-04 | [Snow and avalanche stations](2026-09-04-snow-avalanche-stations.md)                            | wip    |
 | 2026-09-04 | [Warning calendar and regional hazard levels](2026-09-04-warning-calendar-and-hazard-levels.md) | wip    |
 | 2026-09-04 | [Regional meteorological warnings](2026-09-04-regional-weather-warnings.md)                     | wip    |
 | 2026-09-04 | [Extended weather data and global attention flags](2026-09-04-extended-weather-data.md)         | wip    |

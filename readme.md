@@ -79,7 +79,7 @@ This integration allows creating these entities:
 | Weather location             | Forecast conditions for the selected map point; physical station measurements are not used     | Hourly and daily    |
 | Radiation monitoring station | Direct µR/h and nSv/h readings with observation time                                           | —                   |
 | Hydrology post               | Daily water measurements and the provider's hydrological situation                             | —                   |
-| Snow and avalanche station   | Snow depth/change, temperature, humidity, wind, cloudiness, phenomena, and observation date     | —                   |
+| Snow and avalanche station   | Snow depth/change, temperature, humidity, wind, cloudiness, phenomena, and observation date    | —                   |
 
 The integration exposes provider-global weather and radiation attention flags. Fire and snow use regional sources for each weather location. Hydrology posts use official basin polygons for detailed warning levels, text, phenomena, and validity periods. Read-only Home Assistant calendars show all matched warning periods.
 
@@ -117,12 +117,12 @@ Weather locations expose current precipitation. Physical stations also expose su
 | Detailed forecast                            |       ✅        |        —         | Diagnostic attributes with day/night temperature ranges, precipitation text, cloudiness, wind ranges, sunrise, sunset, and provider code.            |
 | Regional weather warning                     |       ✅        |        ✅        | Problem sensor active only during a current warning, with text, codes, timing, and active/future counts in attributes.                               |
 | Regional weather warning level               |       ✅        |        ✅        | Enum sensor with `none`, `yellow`, `orange`, or `red`, suitable for dashboards and automations.                                                      |
-| Regional fire danger level                    |       ✅        |        ✅        | Official UkrHMC categories: none, extreme, or prolonged extreme, with periods in attributes.                                                        |
-| Regional avalanche danger level               |       ✅        |        ✅        | Official 1–5 avalanche scale; exact points and stations are matched against published mountain-area polygons.                                      |
-| Weather warning calendar                      |       ✅        |        ✅        | Timed meteorological, fire, and avalanche warnings as Home Assistant calendar events.                                                              |
-| Feels like temperature                        |       ✅        |        ✅        | Derived Steadman apparent temperature from temperature, humidity, and wind speed; excludes solar radiation.                                        |
-| Hydrological warning level                    |        —        |        —         | Added to hydrology posts with river, official basin, phenomenon, full text, and validity period.                                                    |
-| Hydrological warning calendar                 |        —        |        —         | Timed basin warnings matched to the selected hydrology post.                                                                                       |
+| Regional fire danger level                   |       ✅        |        ✅        | Official UkrHMC categories: none, extreme, or prolonged extreme, with periods in attributes.                                                         |
+| Regional avalanche danger level              |       ✅        |        ✅        | Official 1–5 avalanche scale; exact points and stations are matched against published mountain-area polygons.                                        |
+| Weather warning calendar                     |       ✅        |        ✅        | Timed meteorological, fire, and avalanche warnings as Home Assistant calendar events.                                                                |
+| Feels like temperature                       |       ✅        |        ✅        | Derived Steadman apparent temperature from temperature, humidity, and wind speed; excludes solar radiation.                                          |
+| Hydrological warning level                   |        —        |        —         | Added to hydrology posts with river, official basin, phenomenon, full text, and validity period.                                                     |
+| Hydrological warning calendar                |        —        |        —         | Timed basin warnings matched to the selected hydrology post.                                                                                         |
 
 Hourly forecasts are available only for a configured **weather location**. They come directly from the UkrHMC `dataDetailed` point-forecast product and may include temperature, condition, precipitation, pressure, humidity, dew point, wind speed, gust, and direction when the provider publishes them. Home Assistant exposes forecasts through the weather entity forecast service and forecast-capable dashboard cards, not as one sensor per hour.
 
@@ -158,13 +158,13 @@ density sensor. UkrHMC also omits wind for the Драгобрат station.
 
 The shared UkrHMC service device exposes:
 
-| Entity                                                         | Meaning                                                                                                                   |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| API available                                                  | Connectivity binary sensor. It is on when the latest scheduled provider update succeeded and off after an update failure. |
-| Last successful update                                         | Timestamp of the latest complete provider snapshot retained across temporary failures.                                    |
-| Data stale                                                     | Problem sensor activated when the last successful complete update is older than 45 minutes.                               |
-| Consecutive update failures                                    | Number of failed provider updates since the latest successful refresh.                                                    |
-| Global weather and radiation attention | Direct provider-global flags. They contain no severity, text, or validity period.                                                   |
+| Entity                                 | Meaning                                                                                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| API available                          | Connectivity binary sensor. It is on when the latest scheduled provider update succeeded and off after an update failure. |
+| Last successful update                 | Timestamp of the latest complete provider snapshot retained across temporary failures.                                    |
+| Data stale                             | Problem sensor activated when the last successful complete update is older than 45 minutes.                               |
+| Consecutive update failures            | Number of failed provider updates since the latest successful refresh.                                                    |
+| Global weather and radiation attention | Direct provider-global flags. They contain no severity, text, or validity period.                                         |
 
 The regional weather warning sensors are attached to physical stations and exact map locations. Stations use their direct UkrHMC oblast id. For a map location, the integration checks its coordinates against the official GeoJSON polygon of every oblast that currently has a published warning; those polygons are cached. The problem sensor is on while at least one matched warning is active. Attributes include `region`, `region_id`, active `level`, `level_name`, `active_count`, `future_count`, `next_start`, `next_end`, the provider update time, and a `warnings` list with description, phenomenon code, level, raw period, start, end, and status. The companion enum sensor exposes the highest active level as `none`, `yellow`, `orange`, or `red`.
 

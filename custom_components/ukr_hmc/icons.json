@@ -71,12 +71,12 @@
       "regional_weather_warning_level": { "default": "mdi:alert-decagram" },
       "regional_fire_danger_level": { "default": "mdi:fire-alert" },
       "regional_snow_danger_level": { "default": "mdi:snowflake-alert" },
-      "hydrology_warning_level": { "default": "mdi:waves-arrow-up" }
-      ,"snow_depth": { "default": "mdi:snowflake" }
-      ,"snow_depth_change": { "default": "mdi:snowflake-variant" }
-      ,"cloudiness": { "default": "mdi:weather-cloudy" }
-      ,"weather_phenomena": { "default": "mdi:weather-partly-snowy-rainy" }
-      ,"observation_date": { "default": "mdi:calendar-clock" }
+      "hydrology_warning_level": { "default": "mdi:waves-arrow-up" },
+      "snow_depth": { "default": "mdi:snowflake" },
+      "snow_depth_change": { "default": "mdi:snowflake-variant" },
+      "cloudiness": { "default": "mdi:weather-cloudy" },
+      "weather_phenomena": { "default": "mdi:weather-partly-snowy-rainy" },
+      "observation_date": { "default": "mdi:calendar-clock" }
     },
     "binary_sensor": {
       "global_weather_attention": { "default": "mdi:weather-lightning" },
