@@ -19,6 +19,20 @@
       "no_stations": "The Ukrainian Hydrometeorological Center returned no stations."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update settings",
+        "description": "Configure how often the public UkrHMC API is polled.",
+        "data": {
+          "update_interval_minutes": "Update interval in minutes"
+        },
+        "data_description": {
+          "update_interval_minutes": "Allowed range: 5 to 30 minutes. The default is 15 minutes."
+        }
+      }
+    }
+  },
   "config_subentries": {
     "weather_station": {
       "step": {
@@ -265,11 +279,17 @@
       }
     },
     "binary_sensor": {
-      "global_weather_attention": { "name": "Global weather attention" },
-      "global_hydrology_attention": { "name": "Global hydrology attention" },
-      "global_snow_attention": { "name": "Global snow attention" },
-      "global_radiation_attention": { "name": "Global radiation attention" },
-      "global_fire_attention": { "name": "Global fire attention" },
+      "global_weather_attention": {
+        "name": "UkrHMC provider-wide meteorological attention indicator"
+      },
+      "global_hydrology_attention": {
+        "name": "UkrHMC provider-wide hydrological attention indicator"
+      },
+      "global_snow_attention": { "name": "UkrHMC provider-wide snow attention indicator" },
+      "global_radiation_attention": {
+        "name": "UkrHMC provider-wide radiation attention indicator"
+      },
+      "global_fire_attention": { "name": "UkrHMC provider-wide fire attention indicator" },
       "api_available": { "name": "API available" },
       "data_stale": { "name": "Data stale" },
       "regional_weather_warning": { "name": "Regional weather warning" }

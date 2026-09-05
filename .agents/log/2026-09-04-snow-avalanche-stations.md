@@ -1,6 +1,6 @@
 # Snow and avalanche stations
 
-Status: wip
+Status: done
 
 ## Decision
 

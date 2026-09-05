@@ -44,7 +44,10 @@ ALERT_FLAGS: tuple[BinarySensorEntityDescription, ...] = tuple(
     )
     for key, category in (
         ("attns_meteo", "weather"),
+        ("attns_hydro", "hydrology"),
+        ("attns_snigo", "snow"),
         ("attns_radio", "radiation"),
+        ("attns_fire", "fire"),
     )
 )
 
@@ -210,7 +213,29 @@ class UkrHMCAlertBinarySensor(
     @override
     def is_on(self) -> bool:
         """Return the direct global provider flag."""
-        return self.coordinator.data.alert_flags[self.entity_description.key]
+        return self.coordinator.data.alert_flags.get(self.entity_description.key, False)
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the provider-global flag feed is available."""
+        source_available = self.coordinator.source_availability.get(
+            "attention_flags", True
+        )
+        return (
+            self.coordinator.last_update_success
+            and source_available
+            and self.entity_description.key in self.coordinator.data.alert_flags
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | bool]:
+        """Describe the deliberately limited provider-global semantics."""
+        return {
+            "scope": "provider_global",
+            "provider_key": self.entity_description.key,
+            "has_regional_details": False,
+        }
 
     @property
     @override

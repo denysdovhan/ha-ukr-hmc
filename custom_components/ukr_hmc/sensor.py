@@ -364,6 +364,7 @@ DATA_TIME_SENSOR = UkrHMCSensorDescription(
     key="observation_time",
     translation_key="observation_time",
     device_class=SensorDeviceClass.TIMESTAMP,
+    entity_category=EntityCategory.DIAGNOSTIC,
     station_value_fn=lambda observation, _: observation.observed_at,
     location_value_fn=lambda forecast: forecast.forecast_at,
 )
@@ -639,6 +640,7 @@ RADIATION_SENSORS: tuple[UkrHMCRadiationSensorDescription, ...] = (
         key="observation_time",
         translation_key="observation_time",
         device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda observation: observation.observed_at,
     ),
 )
@@ -705,6 +707,7 @@ SNOW_SENSORS: tuple[UkrHMCSnowSensorDescription, ...] = (
         key="observation_date",
         translation_key="observation_date",
         device_class=SensorDeviceClass.DATE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda observation: observation.observed_on,
     ),
 )
@@ -764,6 +767,7 @@ HYDROLOGY_SENSORS: tuple[UkrHMCHydrologySensorDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         native_unit_of_measurement=UnitOfLength.METERS,
         suggested_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         value_fn=lambda observation: observation.water_level_change,
     ),
@@ -786,6 +790,7 @@ HYDROLOGY_SENSORS: tuple[UkrHMCHydrologySensorDescription, ...] = (
         key="observation_time",
         translation_key="observation_time",
         device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda observation: observation.observed_at,
     ),
 )
@@ -819,6 +824,24 @@ class UkrHMCSensor(UkrHMCEntity, SensorEntity):
             self.observation,
             self._station_id in self.coordinator.data.night_station_ids,
         )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose compact source metadata on the diagnostic time sensor."""
+        if self.entity_description.key != "observation_time":
+            return {}
+        if self._station_id is None:
+            return {"source_type": "weather_location"}
+        station = self.coordinator.data.stations.get(self._station_id)
+        if station is None:
+            return {"source_type": "weather_station"}
+        return {
+            "source_type": "weather_station",
+            "station_name": station.name,
+            "region": station.region_name,
+            "region_id": station.region_id,
+            "altitude": station.altitude,
+        }
 
 
 class UkrHMCLocationSummarySensor(UkrHMCEntity, SensorEntity):
@@ -1071,6 +1094,18 @@ class UkrHMCRadiationSensor(UkrHMCEntity, SensorEntity):
         return self.entity_description.value_fn(observation)
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose station metadata on the diagnostic time sensor."""
+        if self.entity_description.key != "observation_time":
+            return {}
+        station = self.coordinator.data.radiation_stations.get(
+            self._radiation_station_id
+        )
+        if station is None:
+            return {}
+        return {"station_name": station.name, "altitude": station.altitude}
+
+    @property
     @override
     def device_info(self) -> DeviceInfo:
         """Return service device information for this radiation station."""
@@ -1132,6 +1167,16 @@ class UkrHMCHydrologySensor(UkrHMCEntity, SensorEntity):
         return self.entity_description.value_fn(observation)
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose post metadata on the diagnostic time sensor."""
+        if self.entity_description.key != "observation_time":
+            return {}
+        post = self.coordinator.data.hydrology_posts.get(self._post_id)
+        if post is None:
+            return {}
+        return {"post_name": post.name, "river": post.river}
+
+    @property
     @override
     def device_info(self) -> DeviceInfo:
         """Return service device information for this hydrology post."""
@@ -1191,6 +1236,14 @@ class UkrHMCSnowSensor(UkrHMCEntity, SensorEntity):
         if (observation := self.snow_observation) is None:
             return None
         return self.entity_description.value_fn(observation)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose station metadata on the diagnostic date sensor."""
+        if self.entity_description.key != "observation_date":
+            return {}
+        station = self.coordinator.data.snow_stations.get(self._snow_station_id)
+        return {"station_name": station.name} if station else {}
 
     @property
     @override

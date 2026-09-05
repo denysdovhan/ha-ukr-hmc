@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, override
 
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, CONF_NAME
@@ -17,6 +17,7 @@ from .api import (
     UkrHMCLocationForecastRequest,
 )
 from .const import (
+    CONF_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
@@ -51,7 +52,15 @@ class UkrHMCCoordinator(DataUpdateCoordinator[UkrHMCData]):
             LOGGER,
             config_entry=config_entry,
             name=DOMAIN,
-            update_interval=UPDATE_INTERVAL,
+            update_interval=timedelta(
+                minutes=int(
+                    config_entry.options.get(
+                        CONF_UPDATE_INTERVAL_MINUTES,
+                        UPDATE_INTERVAL.total_seconds() // 60,
+                    )
+                )
+            ),
+            always_update=False,
         )
         self._api = api
         self.last_successful_update: datetime | None = None

@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.5.0
+
+### Added
+
+- Reconfiguration for weather locations, physical stations, radiation stations,
+  hydrology posts, and snow/avalanche stations.
+- A bounded 5–30 minute polling interval option.
+- Endpoint timing/retry telemetry and sanitized provider schema diagnostics.
+- Compact station, region, altitude, and river metadata on diagnostic observation
+  time/date sensors.
+
+### Changed
+
+- Expose all five provider-wide UkrHMC attention indicators with explicit global
+  scope, separately from detailed regional warnings.
+- Suppress redundant coordinator entity updates while preserving timed warning
+  transitions.
+- Treat unknown weather descriptions as unknown instead of exceptional.
+- Publish water-level change as a signed measurement suitable for statistics.
+- Add product freshness checks, partial-source isolation, bounded request
+  concurrency, retry/backoff, and expiring catalog caches.
+- Mark provider observation time/date entities as diagnostic and send the actual
+  installed integration version plus the upstream project URL in HTTP requests.
+- Require Home Assistant 2026.9.0.
+
 ## v0.4.0
 
 ### Added

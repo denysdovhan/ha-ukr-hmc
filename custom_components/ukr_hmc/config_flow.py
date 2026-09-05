@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
 
 import voluptuous as vol
 from homeassistant.config_entries import (
+    SOURCE_RECONFIGURE,
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentryData,
     ConfigSubentryFlow,
+    OptionsFlow,
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_LATITUDE, CONF_LOCATION, CONF_LONGITUDE, CONF_NAME
@@ -24,6 +26,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
 )
+from homeassistant.loader import async_get_loaded_integration
 
 from .api import (
     UkrHMCClient,
@@ -37,7 +40,10 @@ from .api import (
 )
 from .const import (
     CONF_STATION_ID,
+    CONF_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    MAX_UPDATE_INTERVAL_MINUTES,
+    MIN_UPDATE_INTERVAL_MINUTES,
     NAME,
     SUBENTRY_TYPE_HYDROLOGY_POST,
     SUBENTRY_TYPE_RADIATION_STATION,
@@ -45,7 +51,11 @@ from .const import (
     SUBENTRY_TYPE_WEATHER_LOCATION,
     SUBENTRY_TYPE_WEATHER_STATION,
     SUBENTRY_TYPES,
+    UPDATE_INTERVAL,
 )
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 
 def _station_options(stations: list[UkrHMCStation]) -> list[SelectOptionDict]:
@@ -111,10 +121,25 @@ def _is_duplicate(config_entry: ConfigEntry, unique_id: str) -> bool:
     )
 
 
+def _api_client(hass: HomeAssistant) -> UkrHMCClient:
+    """Return a provider client carrying the installed integration version."""
+    return UkrHMCClient(
+        async_get_clientsession(hass),
+        version=async_get_loaded_integration(hass, DOMAIN).version,
+    )
+
+
 class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
     """Configure the UkrHMC service."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    @override
+    def async_get_options_flow(config_entry: ConfigEntry) -> UkrHMCOptionsFlow:
+        """Return service-level polling options."""
+        return UkrHMCOptionsFlow()
 
     @classmethod
     @callback
@@ -219,6 +244,39 @@ class UkrHMCConfigFlow(ConfigFlow, domain=DOMAIN):
         return result
 
 
+class UkrHMCOptionsFlow(OptionsFlow):
+    """Configure bounded service-level polling options."""
+
+    @override
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure the provider polling interval."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        current_interval = self.config_entry.options.get(
+            CONF_UPDATE_INTERVAL_MINUTES,
+            int(UPDATE_INTERVAL.total_seconds() // 60),
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_UPDATE_INTERVAL_MINUTES,
+                        default=current_interval,
+                    ): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(
+                            min=MIN_UPDATE_INTERVAL_MINUTES,
+                            max=MAX_UPDATE_INTERVAL_MINUTES,
+                        ),
+                    )
+                }
+            ),
+        )
+
+
 class UkrHMCSubentryFlow(ConfigSubentryFlow):
     """Base flow shared by initial and additional resources."""
 
@@ -226,9 +284,45 @@ class UkrHMCSubentryFlow(ConfigSubentryFlow):
 
     def _is_duplicate(self, unique_id: str) -> bool:
         """Return whether a resource exists outside the initial atomic flow."""
-        return not self.creating_initial_subentry and _is_duplicate(
-            self._get_entry(), unique_id
+        if self.creating_initial_subentry:
+            return False
+        excluded_id = (
+            self._get_reconfigure_subentry().subentry_id
+            if self.source == SOURCE_RECONFIGURE
+            else None
         )
+        return any(
+            subentry.unique_id == unique_id and subentry.subentry_id != excluded_id
+            for subentry in self._get_entry().subentries.values()
+        )
+
+    def _finish_resource(
+        self,
+        *,
+        title: str,
+        unique_id: str,
+        data: dict[str, Any],
+    ) -> SubentryFlowResult:
+        """Create a resource or update and reload its existing subentry."""
+        if self.source == SOURCE_RECONFIGURE:
+            return self.async_update_and_abort(
+                self._get_entry(),
+                self._get_reconfigure_subentry(),
+                title=title,
+                unique_id=unique_id,
+                data=data,
+            )
+        return self.async_create_entry(
+            title=title,
+            unique_id=unique_id,
+            data=data,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit an existing resource with the same validated form."""
+        return await self.async_step_user(user_input)
 
 
 class WeatherLocationFlowHandler(UkrHMCSubentryFlow):
@@ -254,9 +348,7 @@ class WeatherLocationFlowHandler(UkrHMCSubentryFlow):
                 title = f"{latitude:.4f}, {longitude:.4f}"
 
             try:
-                await UkrHMCClient(
-                    async_get_clientsession(self.hass)
-                ).async_validate_location_forecast(
+                await _api_client(self.hass).async_validate_location_forecast(
                     UkrHMCLocationForecastRequest(
                         name=title,
                         latitude=latitude,
@@ -268,7 +360,7 @@ class WeatherLocationFlowHandler(UkrHMCSubentryFlow):
             except UkrHMCError:
                 errors["base"] = "cannot_connect"
             else:
-                return self.async_create_entry(
+                return self._finish_resource(
                     title=title,
                     unique_id=unique_id,
                     data={
@@ -289,17 +381,29 @@ class WeatherLocationFlowHandler(UkrHMCSubentryFlow):
                         ),
                     }
                 ),
-                user_input
-                or {
-                    CONF_NAME: self.hass.config.location_name,
-                    CONF_LOCATION: {
-                        CONF_LATITUDE: self.hass.config.latitude,
-                        CONF_LONGITUDE: self.hass.config.longitude,
-                    },
-                },
+                user_input or self._suggested_values(),
             ),
             errors=errors,
         )
+
+    def _suggested_values(self) -> dict[str, Any]:
+        """Return current values for reconfigure or Home defaults for add."""
+        if self.source == SOURCE_RECONFIGURE:
+            subentry = self._get_reconfigure_subentry()
+            return {
+                CONF_NAME: subentry.title,
+                CONF_LOCATION: {
+                    CONF_LATITUDE: subentry.data[CONF_LATITUDE],
+                    CONF_LONGITUDE: subentry.data[CONF_LONGITUDE],
+                },
+            }
+        return {
+            CONF_NAME: self.hass.config.location_name,
+            CONF_LOCATION: {
+                CONF_LATITUDE: self.hass.config.latitude,
+                CONF_LONGITUDE: self.hass.config.longitude,
+            },
+        }
 
 
 class WeatherStationFlowHandler(UkrHMCSubentryFlow):
@@ -307,9 +411,7 @@ class WeatherStationFlowHandler(UkrHMCSubentryFlow):
 
     async def _async_get_stations(self) -> list[UkrHMCStation]:
         """Fetch stations for validation and selection."""
-        stations = await UkrHMCClient(
-            async_get_clientsession(self.hass)
-        ).async_get_stations()
+        stations = await _api_client(self.hass).async_get_stations()
         return list(stations.values())
 
     @override
@@ -339,7 +441,7 @@ class WeatherStationFlowHandler(UkrHMCSubentryFlow):
                 errors["base"] = "invalid_station"
             else:
                 title = str(user_input[CONF_NAME]).strip() or station.name
-                return self.async_create_entry(
+                return self._finish_resource(
                     title=title,
                     unique_id=unique_id,
                     data={CONF_STATION_ID: station.station_id},
@@ -359,10 +461,20 @@ class WeatherStationFlowHandler(UkrHMCSubentryFlow):
                         ),
                     }
                 ),
-                user_input or {CONF_NAME: self.hass.config.location_name},
+                user_input or self._station_suggested_values(),
             ),
             errors=errors,
         )
+
+    def _station_suggested_values(self) -> dict[str, Any]:
+        """Return current station values or defaults for a new resource."""
+        if self.source == SOURCE_RECONFIGURE:
+            subentry = self._get_reconfigure_subentry()
+            return {
+                CONF_NAME: subentry.title,
+                CONF_STATION_ID: str(subentry.data[CONF_STATION_ID]),
+            }
+        return {CONF_NAME: self.hass.config.location_name}
 
 
 class RadiationStationFlowHandler(UkrHMCSubentryFlow):
@@ -372,9 +484,7 @@ class RadiationStationFlowHandler(UkrHMCSubentryFlow):
         self,
     ) -> list[UkrHMCRadiationStation]:
         """Fetch radiation stations with current observations."""
-        stations, observations = await UkrHMCClient(
-            async_get_clientsession(self.hass)
-        ).async_get_radiation_data()
+        stations, observations = await _api_client(self.hass).async_get_radiation_data()
         return [
             station
             for station_id, station in stations.items()
@@ -408,7 +518,7 @@ class RadiationStationFlowHandler(UkrHMCSubentryFlow):
                 errors["base"] = "invalid_station"
             else:
                 title = str(user_input[CONF_NAME]).strip() or station.name
-                return self.async_create_entry(
+                return self._finish_resource(
                     title=title,
                     unique_id=unique_id,
                     data={CONF_STATION_ID: station.station_id},
@@ -428,10 +538,20 @@ class RadiationStationFlowHandler(UkrHMCSubentryFlow):
                         ),
                     }
                 ),
-                user_input or {CONF_NAME: self.hass.config.location_name},
+                user_input or self._station_suggested_values(),
             ),
             errors=errors,
         )
+
+    def _station_suggested_values(self) -> dict[str, Any]:
+        """Return current station values or defaults for a new resource."""
+        if self.source == SOURCE_RECONFIGURE:
+            subentry = self._get_reconfigure_subentry()
+            return {
+                CONF_NAME: subentry.title,
+                CONF_STATION_ID: str(subentry.data[CONF_STATION_ID]),
+            }
+        return {CONF_NAME: self.hass.config.location_name}
 
 
 class HydrologyPostFlowHandler(UkrHMCSubentryFlow):
@@ -439,9 +559,7 @@ class HydrologyPostFlowHandler(UkrHMCSubentryFlow):
 
     async def _async_get_posts(self) -> list[UkrHMCHydrologyPost]:
         """Fetch hydrology posts with current observations."""
-        posts, observations = await UkrHMCClient(
-            async_get_clientsession(self.hass)
-        ).async_get_hydrology_data()
+        posts, observations = await _api_client(self.hass).async_get_hydrology_data()
         return [post for post_id, post in posts.items() if post_id in observations]
 
     @override
@@ -468,7 +586,7 @@ class HydrologyPostFlowHandler(UkrHMCSubentryFlow):
                 errors["base"] = "invalid_station"
             else:
                 title = str(user_input[CONF_NAME]).strip() or post.name
-                return self.async_create_entry(
+                return self._finish_resource(
                     title=title,
                     unique_id=unique_id,
                     data={CONF_STATION_ID: post.post_id},
@@ -488,10 +606,20 @@ class HydrologyPostFlowHandler(UkrHMCSubentryFlow):
                         ),
                     }
                 ),
-                user_input or {CONF_NAME: self.hass.config.location_name},
+                user_input or self._station_suggested_values(),
             ),
             errors=errors,
         )
+
+    def _station_suggested_values(self) -> dict[str, Any]:
+        """Return current post values or defaults for a new resource."""
+        if self.source == SOURCE_RECONFIGURE:
+            subentry = self._get_reconfigure_subentry()
+            return {
+                CONF_NAME: subentry.title,
+                CONF_STATION_ID: str(subentry.data[CONF_STATION_ID]),
+            }
+        return {CONF_NAME: self.hass.config.location_name}
 
 
 class SnowStationFlowHandler(UkrHMCSubentryFlow):
@@ -499,9 +627,7 @@ class SnowStationFlowHandler(UkrHMCSubentryFlow):
 
     async def _async_get_stations(self) -> list[UkrHMCSnowStation]:
         """Fetch snow stations with a current provider record."""
-        stations, observations = await UkrHMCClient(
-            async_get_clientsession(self.hass)
-        ).async_get_snow_data()
+        stations, observations = await _api_client(self.hass).async_get_snow_data()
         return [
             station
             for station_id, station in stations.items()
@@ -534,7 +660,7 @@ class SnowStationFlowHandler(UkrHMCSubentryFlow):
                 errors["base"] = "invalid_station"
             else:
                 title = str(user_input[CONF_NAME]).strip() or station.name
-                return self.async_create_entry(
+                return self._finish_resource(
                     title=title,
                     unique_id=unique_id,
                     data={CONF_STATION_ID: station.station_id},
@@ -554,7 +680,17 @@ class SnowStationFlowHandler(UkrHMCSubentryFlow):
                         ),
                     }
                 ),
-                user_input or {CONF_NAME: self.hass.config.location_name},
+                user_input or self._station_suggested_values(),
             ),
             errors=errors,
         )
+
+    def _station_suggested_values(self) -> dict[str, Any]:
+        """Return current station values or defaults for a new resource."""
+        if self.source == SOURCE_RECONFIGURE:
+            subentry = self._get_reconfigure_subentry()
+            return {
+                CONF_NAME: subentry.title,
+                CONF_STATION_ID: str(subentry.data[CONF_STATION_ID]),
+            }
+        return {CONF_NAME: self.hass.config.location_name}

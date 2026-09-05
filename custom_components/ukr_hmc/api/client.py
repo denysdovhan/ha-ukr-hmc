@@ -120,9 +120,15 @@ def _is_retryable(exc: BaseException) -> bool:
 class UkrHMCClient:
     """Client for public UkrHMC endpoints."""
 
-    def __init__(self, session: ClientSession) -> None:
+    def __init__(self, session: ClientSession, *, version: str | None = None) -> None:
         """Initialize the client with an injected HTTP session."""
         self._session = session
+        self._request_headers = dict(REQUEST_HEADERS)
+        if version:
+            self._request_headers["User-Agent"] = (
+                f"UkrHMC/{version} Home Assistant integration "
+                "(+https://github.com/denysdovhan/ha-ukr-hmc)"
+            )
         self.endpoint_availability: dict[str, bool] = {}
         self.endpoint_telemetry: dict[str, dict[str, Any]] = {}
         self.source_availability: dict[str, bool] = {}
@@ -225,7 +231,7 @@ class UkrHMCClient:
                 async with asyncio.timeout(REQUEST_TIMEOUT):
                     response = await self._session.get(
                         f"{BASE_URL}{path}",
-                        headers=REQUEST_HEADERS,
+                        headers=self._request_headers,
                     )
                     response.raise_for_status()
                     text = await response.text()
@@ -267,7 +273,7 @@ class UkrHMCClient:
                 async with asyncio.timeout(REQUEST_TIMEOUT):
                     response = await self._session.get(
                         f"{BASE_URL}{path}",
-                        headers=REQUEST_HEADERS,
+                        headers=self._request_headers,
                         params=params,
                     )
                     response.raise_for_status()

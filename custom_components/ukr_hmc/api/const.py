@@ -215,5 +215,7 @@ MAX_CONCURRENT_LOCATION_REQUESTS: Final = 4
 REQUEST_HEADERS: Final = {
     "Accept": "application/json, text/javascript, */*",
     "Referer": f"{BASE_URL}/",
-    "User-Agent": "UkrHMC/0.0.0",
+    "User-Agent": (
+        "UkrHMC Home Assistant integration (+https://github.com/denysdovhan/ha-ukr-hmc)"
+    ),
 }

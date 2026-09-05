@@ -1,7 +1,7 @@
 ---
 title: Radiation station monitoring
 date: 2026-08-06
-status: wip
+status: done
 related_paths:
   - custom_components/ukr_hmc/api/
   - custom_components/ukr_hmc/config_flow.py

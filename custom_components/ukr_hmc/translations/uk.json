@@ -19,6 +19,20 @@
       "no_stations": "УкрГМЦ не повернув жодної станції."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Параметри оновлення",
+        "description": "Налаштуйте частоту запитів до публічного API УкрГМЦ.",
+        "data": {
+          "update_interval_minutes": "Інтервал оновлення, хвилин"
+        },
+        "data_description": {
+          "update_interval_minutes": "Дозволений діапазон: від 5 до 30 хвилин. Типове значення — 15 хвилин."
+        }
+      }
+    }
+  },
   "config_subentries": {
     "weather_station": {
       "step": {
@@ -271,11 +285,11 @@
       }
     },
     "binary_sensor": {
-      "global_weather_attention": { "name": "Загальне метеорологічне попередження" },
-      "global_hydrology_attention": { "name": "Загальне гідрологічне попередження" },
-      "global_snow_attention": { "name": "Загальне снігове попередження" },
-      "global_radiation_attention": { "name": "Загальне радіаційне попередження" },
-      "global_fire_attention": { "name": "Загальне попередження про пожежну небезпеку" },
+      "global_weather_attention": { "name": "Загальний індикатор метеорологічної уваги УкрГМЦ" },
+      "global_hydrology_attention": { "name": "Загальний індикатор гідрологічної уваги УкрГМЦ" },
+      "global_snow_attention": { "name": "Загальний індикатор снігової уваги УкрГМЦ" },
+      "global_radiation_attention": { "name": "Загальний індикатор радіаційної уваги УкрГМЦ" },
+      "global_fire_attention": { "name": "Загальний індикатор пожежної уваги УкрГМЦ" },
       "api_available": { "name": "API доступний" },
       "data_stale": { "name": "Дані застаріли" },
       "regional_weather_warning": { "name": "Регіональне метеорологічне попередження" }

@@ -1,6 +1,6 @@
 # Warning event entities
 
-Status: wip
+Status: done
 
 ## Decision
 

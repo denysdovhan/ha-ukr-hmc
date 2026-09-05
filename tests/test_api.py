@@ -1167,5 +1167,11 @@ def test_data_snapshot_copies_input_mappings() -> None:
     assert snapshot.stations
 
 
-def test_api_user_agent_is_integration_agnostic() -> None:
-    assert REQUEST_HEADERS["User-Agent"] == "UkrHMC/0.0.0"
+def test_api_user_agent_uses_runtime_release_version() -> None:
+    assert "0.0.0" not in REQUEST_HEADERS["User-Agent"]
+    assert "denysdovhan/ha-ukr-hmc" in REQUEST_HEADERS["User-Agent"]
+
+    client = UkrHMCClient(Mock(), version="1.2.3")
+
+    assert client._request_headers["User-Agent"].startswith("UkrHMC/1.2.3 ")
+    assert "denysdovhan/ha-ukr-hmc" in client._request_headers["User-Agent"]

@@ -53,13 +53,13 @@ provider products in sibling types.
   data models, and parsers. Keep it ready for extraction to a standalone package.
 - `condition.py` - maps Ukrainian provider descriptions to canonical Home
   Assistant weather conditions.
-- `binary_sensor.py` - exposes API availability, stale-data diagnostics, two
+- `binary_sensor.py` - exposes API availability, stale-data diagnostics, five
   provider-global attention flags once per config entry, plus regional
   meteorological warnings for physical weather stations.
 - `calendar.py` - exposes timed meteorological, fire, and avalanche warnings as
   one read-only calendar per configured weather source.
 - `config_flow.py` - creates the single service entry and typed weather,
-  radiation, and hydrology subentries.
+  radiation, hydrology, and snow subentries, plus reconfigure and polling options.
 - `const.py` - integration constants, subentry types, and the 15-minute update
   interval.
 - `coordinator.py` - fetches shared weather, radiation, and hydrology snapshots
@@ -174,6 +174,9 @@ provider products in sibling types.
   compact diagnostic detailed-forecast sensor rather than per-day entities.
 - Weather stations expose sunrise and sunset timestamp sensors. Provider
   phenomenon and indicator codes are disabled-by-default diagnostic sensors.
+- Provider observation time/date sensors are diagnostic entities. Keep compact
+  public station, region, altitude, or river metadata on those sensors rather
+  than duplicating it across every measurement entity.
 - Parse all five global `attns_*` flags from the day/night payload and expose
   weather and radiation once per config entry as problem-class binary sensors.
   Keep hydrology, fire, and snow parsed for diagnostics but replace their entities
@@ -262,7 +265,8 @@ Current supported endpoints are:
 The `.js` endpoints contain JSON or JSON-compatible assignments despite their
 extension and content type. Bare requests have returned HTTP 403 during live
 validation; preserve the honest browser-like user agent and meteo.gov.ua referer
-in `api/const.py`, and re-verify live behavior before changing request logic.
+in `api/const.py`, include the installed integration version and upstream project
+URL, and re-verify live behavior before changing request logic.
 
 Treat other automatic hydrology, snow, and avalanche endpoints documented in
 `meteo.md` as research only. They are outside the implemented scope unless the

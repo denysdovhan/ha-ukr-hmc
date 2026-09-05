@@ -1,7 +1,7 @@
 ---
 title: Warning calendar and regional hazard levels
 date: 2026-09-04
-status: wip
+status: done
 related_paths:
   - custom_components/ukr_hmc/calendar.py
   - custom_components/ukr_hmc/api/

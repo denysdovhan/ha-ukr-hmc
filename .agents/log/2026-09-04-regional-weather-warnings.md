@@ -1,7 +1,7 @@
 ---
 title: Regional meteorological warnings
 date: 2026-09-04
-status: wip
+status: done
 related_paths:
   - custom_components/ukr_hmc/api/
   - custom_components/ukr_hmc/binary_sensor.py

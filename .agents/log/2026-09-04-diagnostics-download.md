@@ -1,6 +1,6 @@
 # Diagnostics download
 
-Status: wip
+Status: done
 
 ## Decision
 

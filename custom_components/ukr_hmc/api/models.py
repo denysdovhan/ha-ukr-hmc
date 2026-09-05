@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -10,7 +11,7 @@ from .const import WIND_BEARINGS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from datetime import date, datetime, time
+    from datetime import date, time
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +323,7 @@ class UkrHMCData:
     hydrology_warnings_updated_at: datetime | None
     regional_hydrology_warnings: Mapping[int, tuple[UkrHMCHydrologyWarning, ...]]
     hydrology_post_warning_region_ids: Mapping[int, int]
+    active_warning_keys: frozenset[tuple[str, int, int]] = frozenset()
 
     @classmethod
     def create(  # noqa: PLR0913
@@ -358,6 +360,20 @@ class UkrHMCData:
         hydrology_post_warning_region_ids: dict[int, int] | None = None,
     ) -> UkrHMCData:
         """Create an immutable provider snapshot."""
+        now = datetime.now(UTC)
+        warning_groups = (
+            ("meteorological", regional_weather_warnings or {}),
+            ("fire", regional_fire_warnings or {}),
+            ("avalanche", regional_snow_warnings or {}),
+            ("hydrological", regional_hydrology_warnings or {}),
+        )
+        active_warning_keys = frozenset(
+            (warning_type, region_id, index)
+            for warning_type, regions in warning_groups
+            for region_id, warnings in regions.items()
+            for index, warning in enumerate(warnings)
+            if warning.is_active(now)
+        )
         return cls(
             stations=MappingProxyType(dict(stations)),
             observations=MappingProxyType(dict(observations)),
@@ -396,4 +412,5 @@ class UkrHMCData:
             hydrology_post_warning_region_ids=MappingProxyType(
                 dict(hydrology_post_warning_region_ids or {})
             ),
+            active_warning_keys=active_warning_keys,
         )

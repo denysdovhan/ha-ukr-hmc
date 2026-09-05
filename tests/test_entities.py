@@ -261,6 +261,20 @@ async def test_station_current_sensors_use_observation_values(
     assert values["indicator_code"] == 0
     assert "wind_compass" not in values
 
+    observation_time = UkrHMCSensor(
+        coordinator,
+        subentry,
+        next(item for item in STATION_SENSORS if item.key == "observation_time"),
+    )
+    assert observation_time.entity_category is EntityCategory.DIAGNOSTIC
+    assert observation_time.extra_state_attributes == {
+        "source_type": "weather_station",
+        "station_name": STATION.name,
+        "region": STATION.region_name,
+        "region_id": STATION.region_id,
+        "altitude": STATION.altitude,
+    }
+
     wind_direction = next(
         description
         for description in STATION_SENSORS
@@ -304,6 +318,10 @@ async def test_location_current_sensors_use_point_forecast_values(
         sensors["observation_time"].native_value.isoformat()
         == "2026-07-30T22:00:00+03:00"
     )
+    assert sensors["observation_time"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_time"].extra_state_attributes == {
+        "source_type": "weather_location"
+    }
     assert "pressure" not in sensors
 
     wind_compass = next(
@@ -363,11 +381,32 @@ async def test_global_attention_binary_sensors(hass: HomeAssistant) -> None:
         for description in ALERT_FLAGS
     }
 
+    assert set(sensors) == {
+        "attns_meteo",
+        "attns_hydro",
+        "attns_snigo",
+        "attns_radio",
+        "attns_fire",
+    }
     assert sensors["attns_meteo"].is_on
-    assert "attns_hydro" not in sensors
-    assert "attns_fire" not in sensors
-    assert "attns_snigo" not in sensors
+    assert not sensors["attns_hydro"].is_on
+    assert sensors["attns_fire"].is_on
+    assert not sensors["attns_snigo"].is_on
+    assert not sensors["attns_radio"].is_on
+    assert sensors["attns_meteo"].extra_state_attributes == {
+        "scope": "provider_global",
+        "provider_key": "attns_meteo",
+        "has_regional_details": False,
+    }
     assert sensors["attns_meteo"].device_info["model"] == "UkrHMC Service"
+
+    coordinator._api.source_availability = {"attention_flags": False}
+    assert not sensors["attns_meteo"].available
+
+    coordinator._api.source_availability = {"attention_flags": True}
+    coordinator.async_set_updated_data(replace(DATA, alert_flags={"attns_meteo": True}))
+    assert sensors["attns_meteo"].available
+    assert not sensors["attns_radio"].available
 
 
 async def test_regional_weather_warning_binary_sensor(hass: HomeAssistant) -> None:
@@ -605,6 +644,11 @@ async def test_radiation_sensors_use_direct_provider_values(
     assert sensors["dose_rate"].native_unit_of_measurement == "nSv/h"
     assert sensors["dose_rate"].state_class is SensorStateClass.MEASUREMENT
     assert sensors["observation_time"].device_class is SensorDeviceClass.TIMESTAMP
+    assert sensors["observation_time"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_time"].extra_state_attributes == {
+        "station_name": RADIATION_STATION.name,
+        "altitude": RADIATION_STATION.altitude,
+    }
     assert sensors["observation_time"].device_info["model"] == (
         f"UkrHMC Radiation Station {RADIATION_STATION.station_id}"
     )
@@ -664,11 +708,16 @@ async def test_hydrology_sensors_use_direct_provider_values(
         UnitOfLength.CENTIMETERS
     )
     assert sensors["water_level_change"].suggested_display_precision == 0
-    assert sensors["water_level_change"].state_class is None
+    assert sensors["water_level_change"].state_class is SensorStateClass.MEASUREMENT
     assert sensors["water_temperature"].native_unit_of_measurement == (
         UnitOfTemperature.CELSIUS
     )
     assert sensors["hydrological_situation"].device_class is SensorDeviceClass.ENUM
+    assert sensors["observation_time"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_time"].extra_state_attributes == {
+        "post_name": HYDROLOGY_POST.name,
+        "river": HYDROLOGY_POST.river,
+    }
     assert sensors["observation_time"].device_info["model"] == (
         f"UkrHMC Hydrology Post {HYDROLOGY_POST.post_id}"
     )
@@ -720,6 +769,10 @@ async def test_snow_station_sensors_use_direct_provider_values(
     assert sensors["cloudiness"].native_value == "Хмарно"
     assert sensors["weather_phenomena"].native_value == "Туман"
     assert sensors["observation_date"].native_value.isoformat() == "2026-04-20"
+    assert sensors["observation_date"].entity_category is EntityCategory.DIAGNOSTIC
+    assert sensors["observation_date"].extra_state_attributes == {
+        "station_name": SNOW_STATION.name
+    }
     assert sensors["snow_depth"].device_info["model"] == (
         f"UkrHMC Snow Station {SNOW_STATION.station_id}"
     )

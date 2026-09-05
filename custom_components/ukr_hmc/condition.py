@@ -43,6 +43,7 @@ PARTLY_CLOUDY_KEYWORDS = (
 )
 CLOUDY_KEYWORDS = ("хмар", "cloud", "overcast")
 CLEAR_KEYWORDS = ("ясно", "clear")
+ICE_KEYWORDS = ("ожелед", "памороз", "glaze", "freezing")
 
 
 def _has_any(description: str, keywords: tuple[str, ...]) -> bool:
@@ -50,11 +51,12 @@ def _has_any(description: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword in description for keyword in keywords)
 
 
-def hmc_condition_to_ha(description: str, *, is_night: bool = False) -> str:
+def hmc_condition_to_ha(description: str, *, is_night: bool = False) -> str | None:
     """Map a published HMC description to a canonical HA condition."""
     condition = description.casefold()
     has_rain = _has_any(condition, RAIN_KEYWORDS)
     has_snow = _has_any(condition, SNOW_KEYWORDS)
+    has_ice = _has_any(condition, ICE_KEYWORDS)
     clear_condition = ATTR_CONDITION_CLEAR_NIGHT if is_night else ATTR_CONDITION_SUNNY
     condition_rules = (
         (
@@ -69,7 +71,8 @@ def hmc_condition_to_ha(description: str, *, is_night: bool = False) -> str:
             "злив" in condition or (_has_any(condition, HEAVY_KEYWORDS) and has_rain),
             ATTR_CONDITION_POURING,
         ),
-        (has_rain or "ожелед" in condition, ATTR_CONDITION_RAINY),
+        (has_rain, ATTR_CONDITION_RAINY),
+        (has_ice, ATTR_CONDITION_EXCEPTIONAL),
         (
             _has_any(condition, FOG_KEYWORDS),
             ATTR_CONDITION_FOG,
@@ -83,4 +86,4 @@ def hmc_condition_to_ha(description: str, *, is_night: bool = False) -> str:
     for matches, ha_condition in condition_rules:
         if matches:
             return ha_condition
-    return ATTR_CONDITION_EXCEPTIONAL
+    return None
