@@ -125,6 +125,7 @@ Thank you! Read the [contributing guide](./contributing.md) for more information
 - ☀️ [Fayna SES](https://github.com/denysdovhan/ha-fayna-ses) — provides battery levels, power flows, and energy data from Fayna SES stations.
 - 💨 [LUN Misto Air](https://github.com/denysdovhan/ha-lun-misto-air) — provides air quality and environmental data from LUN Misto monitoring stations.
 - ⚡️ [Yasno Outages](https://github.com/denysdovhan/ha-yasno-outages) — provides planned electricity outage schedules, sensors, and calendars from Yasno.
+- 💧 [Kyiv Vodokanal](https://github.com/denysdovhan/ha-kyiv-vodokanal) — water meter readings, bills, payments, and tariffs.
 
 ## License
 
